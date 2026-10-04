@@ -5,7 +5,7 @@ if (storedTheme === 'light' || (!storedTheme && !systemDarkMode?.matches)) docum
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
-let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], pendingSession = null, tutorialStep = 0;
+let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, pendingSession = null, tutorialStep = 0;
 const tutorialSteps = [
   ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs.'],
   ['Your crew gathers together', 'Supplies arrive automatically every six seconds while you are away. Everyone on your team adds to the same stash, even when you are exploring different regions.'],
@@ -207,23 +207,41 @@ $('trip-status').addEventListener('click', async (event) => {
   if (!event.target.closest('#try-puzzle')) return;
   try {
     const result = await api(`puzzle?code=${room.code}&playerId=${playerId}`, {}, 'GET');
-    puzzleSequence = result.sequence; puzzleSymbols = result.symbols; puzzleAnswer = [];
-    $('puzzle-modal').classList.remove('hidden'); $('puzzle-input').classList.add('hidden'); $('puzzle-message').textContent = '';
-    $('puzzle-instructions').textContent = 'Memorize this signal…';
-    $('puzzle-sequence').innerHTML = puzzleSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
+    puzzleSequence = result.sequence || []; puzzleSymbols = result.symbols; puzzleAnswer = []; puzzleType = result.type; countSequence = result.countSequence || []; countTarget = result.countTarget;
+    $('puzzle-modal').classList.remove('hidden'); $('puzzle-input').classList.add('hidden'); $('puzzle-message').textContent = ''; $('puzzle-message').classList.remove('wrong');
+    if (puzzleType === 'count') {
+      $('puzzle-title').textContent = 'Count the signal';
+      $('puzzle-instructions').textContent = `Memorize the display. How many ${puzzleSymbols[countTarget]} symbols did you see?`;
+      $('puzzle-sequence').innerHTML = countSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
+    } else {
+      $('puzzle-title').textContent = 'Repeat the signal';
+      $('puzzle-instructions').textContent = 'Memorize this signal…';
+      $('puzzle-sequence').innerHTML = puzzleSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
+    }
     setTimeout(() => {
       if ($('puzzle-modal').classList.contains('hidden')) return;
-      $('puzzle-sequence').innerHTML = '<span>?</span><span>?</span><span>?</span><span>?</span>';
-      $('puzzle-input').innerHTML = puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('');
-      $('puzzle-input').classList.remove('hidden'); $('puzzle-instructions').textContent = 'Tap the four symbols in the same order.';
-    }, 1800);
+      if (puzzleType === 'count') {
+        $('puzzle-sequence').innerHTML = '<span>?</span>'.repeat(countSequence.length);
+        const count = countSequence.filter((symbol) => symbol === countTarget).length;
+        $('puzzle-input').innerHTML = Array.from({ length: 4 }, (_, index) => `<button class="puzzle-symbol puzzle-choice" data-symbol="${count - 1 + index}">${count - 1 + index}</button>`).join('');
+        $('puzzle-instructions').textContent = `How many ${puzzleSymbols[countTarget]} symbols were in the display?`;
+      } else {
+        $('puzzle-sequence').innerHTML = '<span>?</span><span>?</span><span>?</span><span>?</span>';
+        $('puzzle-input').innerHTML = puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('');
+        $('puzzle-instructions').textContent = 'Tap the four symbols in the same order.';
+      }
+      $('puzzle-input').classList.remove('hidden');
+    }, 2500);
   } catch (error) { toast(error.message); }
 });
 $('puzzle-input').addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-symbol]'); if (!button || puzzleAnswer.length >= 4) return;
+  const button = event.target.closest('[data-symbol]'); const requiredAnswers = puzzleType === 'count' ? 1 : 4;
+  if (!button || puzzleAnswer.length >= requiredAnswers) return;
   puzzleAnswer.push(Number(button.dataset.symbol));
-  $('puzzle-sequence').innerHTML = puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(4 - puzzleAnswer.length);
-  if (puzzleAnswer.length !== 4) return;
+  $('puzzle-sequence').innerHTML = puzzleType === 'count'
+    ? `<span>${puzzleAnswer[0]}</span>`
+    : puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(4 - puzzleAnswer.length);
+  if (puzzleAnswer.length !== requiredAnswers) return;
   try {
     const result = await api('puzzle', { code: room.code, playerId, sequence: puzzleAnswer });
     const message = $('puzzle-message');

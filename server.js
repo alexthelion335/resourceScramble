@@ -197,8 +197,20 @@ function jsonRoute(req, res, pathname, data) {
     if (!['playing', 'tiebreak'].includes(room.phase) || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
     if (player.trip.puzzleSolved || player.trip.puzzleAttempted) return send(res, 409, { error: 'You have already tried this trip’s puzzle.' });
     player.trip.puzzleAttempted = true;
+    const symbols = ['🌙', '☀️', '⭐', '⚡'];
+    player.trip.puzzleType = Math.random() < 0.5 ? 'memory' : 'count';
+    if (player.trip.puzzleType === 'memory') player.trip.puzzleSequence = Array.from({ length: 4 }, () => Math.floor(Math.random() * symbols.length));
+    else {
+      player.trip.countTarget = Math.floor(Math.random() * symbols.length);
+      player.trip.countAnswer = 2 + Math.floor(Math.random() * 4);
+      const otherSymbols = symbols.map((_, index) => index).filter((index) => index !== player.trip.countTarget);
+      player.trip.countSequence = [
+        ...Array(player.trip.countAnswer).fill(player.trip.countTarget),
+        ...Array.from({ length: 9 - player.trip.countAnswer }, () => otherSymbols[Math.floor(Math.random() * otherSymbols.length)]),
+      ].sort(() => Math.random() - 0.5);
+    }
     emit(room);
-    return send(res, 200, { sequence: player.trip.puzzleSequence, symbols: ['🌙', '☀️', '⭐', '⚡'] });
+    return send(res, 200, { type: player.trip.puzzleType, sequence: player.trip.puzzleSequence, symbols, countSequence: player.trip.countSequence, countTarget: player.trip.countTarget });
   }
   if (pathname === '/api/start' && req.method === 'POST') {
     if (player.id !== room.createdBy) return send(res, 403, { error: 'Only the host can start the round.' });
@@ -219,7 +231,7 @@ function jsonRoute(req, res, pathname, data) {
     const now = Date.now();
     const tripMs = boost?.id === 'swift_boots' ? 20000 : 30000;
     const yieldIntervalMs = boost?.id === 'swift_boots' ? 4000 : 6000;
-    player.trip = { siteId: site.id, resource: site.resource, startedAt: now, endsAt: now + tripMs, nextYieldAt: now + yieldIntervalMs, yieldIntervalMs, yields: 0, puzzleSolved: false, puzzleAttempted: false, puzzleSequence: Array.from({ length: 4 }, () => Math.floor(Math.random() * 4)), boostId: boost?.id || null };
+    player.trip = { siteId: site.id, resource: site.resource, startedAt: now, endsAt: now + tripMs, nextYieldAt: now + yieldIntervalMs, yieldIntervalMs, yields: 0, puzzleSolved: false, puzzleAttempted: false, boostId: boost?.id || null };
     if (boost?.id === 'supply_flare') {
       room.teams[player.team].stash[site.resource] += 3;
       if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += 3;
@@ -230,7 +242,9 @@ function jsonRoute(req, res, pathname, data) {
     if (!['playing', 'tiebreak'].includes(room.phase) || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
     if (!player.trip.puzzleAttempted || player.trip.puzzleSolved) return send(res, 409, { error: 'Open the puzzle before submitting.' });
     const answer = Array.isArray(data.sequence) ? data.sequence : [];
-    const correct = answer.length === 4 && answer.every((value, index) => value === player.trip.puzzleSequence[index]);
+    const correct = player.trip.puzzleType === 'count'
+      ? answer.length === 1 && answer[0] === player.trip.countAnswer
+      : answer.length === 4 && answer.every((value, index) => value === player.trip.puzzleSequence[index]);
     let reward = null;
     if (correct) {
       player.trip.puzzleSolved = true;
