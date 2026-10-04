@@ -212,10 +212,12 @@ $('trip-status').addEventListener('click', async (event) => {
     if (puzzleType === 'count') {
       $('puzzle-title').textContent = 'Count the signal';
       $('puzzle-instructions').textContent = `Memorize the display. How many ${puzzleSymbols[countTarget]} symbols did you see?`;
+      $('puzzle-sequence').classList.add('count-grid');
       $('puzzle-sequence').innerHTML = countSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
     } else {
       $('puzzle-title').textContent = 'Repeat the signal';
       $('puzzle-instructions').textContent = 'Memorize this signal…';
+      $('puzzle-sequence').classList.remove('count-grid');
       $('puzzle-sequence').innerHTML = puzzleSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
     }
     setTimeout(() => {
