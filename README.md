@@ -28,4 +28,4 @@ When returning in the same browser, the home screen offers to continue the last 
 
 The host can start a rematch from the result screen.
 
-The website opens in dark mode. Use the sun/moon control in the header to switch themes; your preference is saved on that device.
+The website follows the device's light/dark appearance by default. Use the sun/moon control in the header to choose a saved theme override for that device.

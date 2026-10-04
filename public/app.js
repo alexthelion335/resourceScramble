@@ -1,5 +1,7 @@
 const $ = (id) => document.getElementById(id);
-if (localStorage.getItem('resource-scramble-theme') === 'light') document.body.classList.add('light-mode');
+const storedTheme = localStorage.getItem('resource-scramble-theme');
+const systemDarkMode = window.matchMedia?.('(prefers-color-scheme: dark)');
+if (storedTheme === 'light' || (!storedTheme && !systemDarkMode?.matches)) document.body.classList.add('light-mode');
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
@@ -208,6 +210,11 @@ $('theme-toggle').addEventListener('click', () => {
   updateThemeButton();
 });
 updateThemeButton();
+systemDarkMode?.addEventListener?.('change', (event) => {
+  if (localStorage.getItem('resource-scramble-theme')) return;
+  document.body.classList.toggle('light-mode', !event.matches);
+  updateThemeButton();
+});
 window.addEventListener('pagehide', () => { if (stream) stream.close(); });
 
 // Rejoin a room after a refresh on this device; the session token is local to this browser.
