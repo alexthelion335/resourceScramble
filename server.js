@@ -7,6 +7,7 @@ const PORT = Number(process.env.PORT || 3000);
 const ROOT = path.join(__dirname, 'public');
 const rooms = new Map();
 const RESOURCES = ['wood', 'stone', 'crystal'];
+const TEAM_SYMBOLS = ['🔥', '🌊', '🌿', '⭐', '⚡', '🦊', '🐙', '🌈', '🦈', '🐢', '🍄', '☀️'];
 const BOOSTS = [
   { id: 'lucky_pick', name: 'Lucky Pick', icon: '⛏️', description: 'Double your first haul this trip.' },
   { id: 'swift_boots', name: 'Swift Boots', icon: '🥾', description: 'Return 10 seconds sooner.' },
@@ -24,7 +25,7 @@ const ORDERS = [
 function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
-    players: [...room.players.values()].map(({ id, name, team, online, trip, boosts }) => ({ id, name, team, online, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yields: trip.yields, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
+    players: [...room.players.values()].map(({ id, name, team, online, trip, boosts }) => ({ id, name, team, online, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
     teams: room.teams, timeLeft: room.phase === 'playing' ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
     duration: room.duration, round: room.round, winner: room.winner,
     sites: room.sites, event: room.event,
@@ -37,7 +38,7 @@ function emit(room) {
 function newTeams() {
   const orders = [newOrder(), newOrder()];
   while (orders[0].name === orders[1].name) orders[1] = newOrder();
-  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id] }));
+  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id] }));
 }
 function newOrder() {
   const order = ORDERS[Math.floor(Math.random() * ORDERS.length)];
@@ -49,7 +50,7 @@ function createRoom(name) {
   const id = crypto.randomUUID();
   const room = {
     code, phase: 'lobby', createdBy: id, players: new Map([[id, { id, name: cleanName(name), team: 0, online: true, boosts: [], trip: null }]]),
-    teams: newTeams(), duration: 300, round: 1, winner: null,
+    teams: newTeams(), duration: 600, round: 1, winner: null,
     sites: [
       { id: 'grove', name: 'Driftwood Grove', resource: 'wood', icon: '🌲', active: true },
       { id: 'quarry', name: 'Cloudstone Ridge', resource: 'stone', icon: '🪨', active: true },
@@ -145,6 +146,19 @@ function jsonRoute(req, res, pathname, data) {
   if (pathname === '/api/state' && req.method === 'GET') return send(res, 200, { room: publicRoom(room) });
   const player = auth(room, data.playerId);
   if (!player) return send(res, 401, { error: 'Player not found in this room.' });
+  if (pathname === '/api/team-settings' && req.method === 'POST') {
+    if (room.phase !== 'lobby') return send(res, 409, { error: 'Crew identity can only be changed in the lobby.' });
+    if (room.players.size < 4) return send(res, 409, { error: 'Crew identity unlocks when four players have joined.' });
+    const team = room.teams[player.team];
+    if (data.teamId !== player.team) return send(res, 403, { error: 'You can only customize your own crew.' });
+    const name = String(data.name || '').trim().slice(0, 18);
+    if (name) {
+      if (room.teams.some((other) => other.id !== team.id && other.name.toLowerCase() === name.toLowerCase())) return send(res, 409, { error: 'Choose a name different from the other crew.' });
+      team.name = name;
+    }
+    if (TEAM_SYMBOLS.includes(data.symbol)) team.symbol = data.symbol;
+    emit(room); return send(res, 200, { room: publicRoom(room) });
+  }
   if (pathname === '/api/puzzle' && req.method === 'GET') {
     if (room.phase !== 'playing' || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
     if (player.trip.puzzleSolved || player.trip.puzzleAttempted) return send(res, 409, { error: 'You have already tried this trip’s puzzle.' });
@@ -169,8 +183,8 @@ function jsonRoute(req, res, pathname, data) {
       boost = player.boosts.splice(index, 1)[0];
     }
     const now = Date.now();
-    const tripMs = boost?.id === 'swift_boots' ? 30000 : 40000;
-    const yieldIntervalMs = boost?.id === 'swift_boots' ? 6000 : 8000;
+    const tripMs = boost?.id === 'swift_boots' ? 20000 : 30000;
+    const yieldIntervalMs = boost?.id === 'swift_boots' ? 4000 : 6000;
     player.trip = { siteId: site.id, resource: site.resource, startedAt: now, endsAt: now + tripMs, nextYieldAt: now + yieldIntervalMs, yieldIntervalMs, yields: 0, puzzleSolved: false, puzzleAttempted: false, puzzleSequence: Array.from({ length: 4 }, () => Math.floor(Math.random() * 4)), boostId: boost?.id || null };
     if (boost?.id === 'supply_flare') room.teams[player.team].stash[site.resource] += 3;
     emit(room); return send(res, 200, { room: publicRoom(room) });

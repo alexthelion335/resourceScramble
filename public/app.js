@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 if (localStorage.getItem('resource-scramble-theme') === 'light') document.body.classList.add('light-mode');
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
+const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
 let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], pendingSession = null;
 
 function setError(id, message = '') { $(id).textContent = message; }
@@ -44,15 +45,18 @@ function render() {
   if (room.phase === 'finished') renderResult();
 }
 function renderTeams() {
+  const me = room.players.find((player) => player.id === playerId);
   $('lobby-teams').innerHTML = room.teams.map((team) => {
     const players = room.players.filter((p) => p.team === team.id);
-    return `<div class="team-box ${team.id ? 'tide' : 'ember'}"><div class="team-box-head"><span>${team.id ? '🌊' : '🔥'} ${team.name}</span><span>${players.length} ${players.length === 1 ? 'player' : 'players'}</span></div><div class="team-members">${players.map((p) => `<span class="player-chip">${escapeHtml(p.name)}${p.id === playerId ? ' · you' : ''}</span>`).join('') || '<span class="player-chip">Waiting for crew…</span>'}</div></div>`;
+    const canCustomize = room.phase === 'lobby' && room.players.length > 3 && me?.team === team.id;
+    const controls = canCustomize ? `<div class="team-customize"><label>CREW NAME<input data-team-name="${team.id}" maxlength="18" value="${escapeHtml(team.name)}" aria-label="Crew name"></label><label>EMBLEM<select data-team-symbol="${team.id}" aria-label="Crew emblem">${teamSymbols.map(([symbol, label]) => `<option value="${symbol}" ${team.symbol === symbol ? 'selected' : ''}>${symbol} ${label}</option>`).join('')}</select></label></div>` : '';
+    return `<div class="team-box ${team.id ? 'tide' : 'ember'}"><div class="team-box-head"><span><span class="team-emblem">${escapeHtml(team.symbol)}</span> ${escapeHtml(team.name)}</span><span>${players.length} ${players.length === 1 ? 'player' : 'players'}</span></div><div class="team-members">${players.map((p) => `<span class="player-chip">${escapeHtml(p.name)}${p.id === playerId ? ' · you' : ''}</span>`).join('') || '<span class="player-chip">Waiting for crew…</span>'}</div>${controls}</div>`;
   }).join('');
 }
 function renderGame(me) {
   const team = room.teams[me.team];
   room.teams.forEach((entry) => {
-    $(`team-name-${entry.id}`).textContent = entry.name; $(`points-${entry.id}`).textContent = entry.score;
+    $(`team-name-${entry.id}`).textContent = entry.name; $(`points-${entry.id}`).textContent = entry.score; $(`team-symbol-${entry.id}`).textContent = entry.symbol;
   });
   const secs = Math.max(0, room.timeLeft);
   $('timer').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
@@ -65,12 +69,13 @@ function renderGame(me) {
     const elapsed = Math.max(0, Date.now() - trip.startedAt);
     const remaining = Math.max(0, Math.ceil((trip.endsAt - Date.now()) / 1000));
     const percent = Math.min(100, elapsed / duration * 100);
-    const nextHaul = Math.max(0, 8 - Math.floor((elapsed % 8000) / 1000));
+    const interval = trip.yieldIntervalMs || 6000;
+    const nextHaul = Math.max(0, Math.ceil((interval - (elapsed % interval)) / 1000));
     $('trip-status').innerHTML = `<div class="trip-active"><strong>${tripSite.icon} On trip: ${escapeHtml(tripSite.name)}</strong><small>Return in ${remaining}s · ${trip.yields} ${names[tripSite.resource]} gathered</small><div class="trip-progress"><i style="width:${percent}%"></i></div>${trip.puzzleAvailable ? '<button class="puzzle-button" id="try-puzzle">Solve site puzzle · earn a powerup ✦</button>' : `<small>${trip.puzzleSolved ? 'Puzzle solved · powerup earned' : trip.puzzleAttempted ? 'Puzzle attempt used' : `Next automatic haul in ${nextHaul}s`}</small>`}</div>`;
   } else {
     $('trip-status').innerHTML = `<div class="trip-ready"><b>${selectedBoostId ? 'Powerup selected for your next trip' : 'Choose a site for your next trip'}</b><span>${selectedBoostId ? 'It will activate when you depart.' : 'Plan your crew’s resource route.'}</span></div>`;
   }
-  $('sites').innerHTML = room.sites.map((site) => `<button class="site-card" data-site="${site.id}" ${!site.active || Boolean(trip) ? 'disabled' : ''}><span class="site-icon">${site.icon}</span><strong>${escapeHtml(site.name)}</strong><small>${site.active ? `Gather ${names[site.resource]}` : 'Resting for now'}</small><span class="gather-cta">${trip ? 'ON YOUR TRIP' : site.active ? `START 40s TRIP ${icons[site.resource]} →` : 'SITE RESTING'}</span></button>`).join('');
+  $('sites').innerHTML = room.sites.map((site) => `<button class="site-card" data-site="${site.id}" ${!site.active || Boolean(trip) ? 'disabled' : ''}><span class="site-icon">${site.icon}</span><strong>${escapeHtml(site.name)}</strong><small>${site.active ? `Gather ${names[site.resource]}` : 'Resting for now'}</small><span class="gather-cta">${trip ? 'ON YOUR TRIP' : site.active ? `START 30s TRIP ${icons[site.resource]} →` : 'SITE RESTING'}</span></button>`).join('');
   $('crew-trips').innerHTML = room.players.filter((player) => player.id !== me.id && player.trip).map((player) => {
     const site = room.sites.find((entry) => entry.id === player.trip.siteId);
     return `<span class="crew-trip-chip">${escapeHtml(player.name)} · ${site?.icon || '✦'} ${escapeHtml(site?.name || 'on trip')}</span>`;
@@ -85,8 +90,7 @@ function renderGame(me) {
     return `<span class="trip-marker ${player.team ? 'tide' : 'ember'} ${player.trip.siteId}" style="animation-duration:${duration}ms;animation-delay:-${elapsed}ms" title="${escapeHtml(player.name)} · ${escapeHtml(site?.name || 'on expedition')}">${escapeHtml(initials)}</span>`;
   }).join('');
   for (const key of Object.keys(names)) $(`stash-${key}`).textContent = team.stash[key];
-  const ownTeam = team.id === 0 ? 'EMBER' : 'TIDE';
-  $('my-team-pill').textContent = ownTeam; $('my-team-pill').className = `my-team-pill ${team.id ? 'tide-pill' : ''}`;
+  $('my-team-pill').textContent = `${team.symbol} ${team.name}`; $('my-team-pill').className = `my-team-pill ${team.id ? 'tide-pill' : ''}`;
   $('order-name').textContent = team.order.name; $('order-points').textContent = team.order.points;
   $('order-costs').innerHTML = Object.entries(team.order.costs).map(([key, quantity]) => `<span class="cost-pill ${team.stash[key] >= quantity ? 'ready' : ''}">${icons[key]} ${team.stash[key]} / ${quantity} ${names[key]}</span>`).join('');
   const deliver = $('deliver-order'); deliver.disabled = !Object.entries(team.order.costs).every(([key, quantity]) => team.stash[key] >= quantity);
@@ -99,7 +103,7 @@ function renderResult() {
   const winner = room.winner;
   $('result-title').textContent = winner === 'draw' ? 'A perfect tie!' : `${room.teams[winner].name} wins!`;
   $('result-copy').textContent = winner === 'draw' ? 'Both crews left with the same stash.' : 'The island is saved. The crew takes the crown.';
-  $('result-scores').innerHTML = room.teams.map((team) => `<div><small>${team.name}</small><b>${team.score} pts</b><small>${Object.values(team.stash).reduce((a,b)=>a+b,0)} supplies left</small></div>`).join('');
+  $('result-scores').innerHTML = room.teams.map((team) => `<div><small>${escapeHtml(team.symbol)} ${escapeHtml(team.name)}</small><b>${team.score} pts</b><small>${Object.values(team.stash).reduce((a,b)=>a+b,0)} supplies left</small></div>`).join('');
   $('rematch').classList.toggle('hidden', room.players.find((p) => p.id === playerId)?.id !== room.createdBy);
 }
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
@@ -127,6 +131,17 @@ $('join-room').addEventListener('click', async () => {
 });
 $('room-code').addEventListener('input', (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
 $('room-code').addEventListener('keydown', (event) => { if (event.key === 'Enter') $('join-room').click(); });
+$('lobby-teams').addEventListener('change', async (event) => {
+  const nameField = event.target.closest('[data-team-name]');
+  const symbolField = event.target.closest('[data-team-symbol]');
+  if (!nameField && !symbolField) return;
+  const teamId = Number((nameField || symbolField).dataset.teamName ?? (nameField || symbolField).dataset.teamSymbol);
+  const team = room.teams.find((entry) => entry.id === teamId);
+  try {
+    const result = await api('team-settings', { code: room.code, playerId, teamId, name: nameField ? nameField.value : team.name, symbol: symbolField ? symbolField.value : team.symbol });
+    room = result.room; renderTeams();
+  } catch (error) { toast(error.message); renderTeams(); }
+});
 $('start-game').addEventListener('click', async () => {
   try { const result = await api('start', { code: room.code, playerId }); room = result.room; render(); }
   catch (error) { setError('room-error', error.message); }
