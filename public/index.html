@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f4f0e7"><title>Resource Scramble</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="paper-grain"></div>
+  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">✦</span> resource<span>scramble</span></a><div class="top-note"><i></i> THE ISLAND IS LIVE</div></header>
+  <main id="app" class="app-shell">
+    <section id="home" class="home-view">
+      <div class="hero-copy"><div class="eyebrow"><span>✳</span> A REAL-TIME CREW RACE</div><h1>Gather fast.<br><em>Build together.</em></h1><p>Team up, raid the island for supplies, and fill the settlement orders before the storm rolls in.</p>
+        <div class="game-facts"><div><span class="fact-icon">◷</span><b>5 min</b><small>rounds</small></div><div><span class="fact-icon">♟</span><b>2–8</b><small>players</small></div><div><span class="fact-icon">↗</span><b>2 crews</b><small>one winner</small></div></div>
+      </div>
+      <div class="lobby-card"><div class="card-spark">✳</div><div class="eyebrow">READY TO SET SAIL?</div><h2>Find your crew</h2><label for="player-name">YOUR NAME</label><input id="player-name" maxlength="16" placeholder="e.g. Sea Biscuit" autocomplete="nickname">
+        <button id="create-room" class="button primary full">Create a room <span>↗</span></button><div class="divider"><span>OR JOIN A CREW</span></div>
+        <div class="join-row"><input id="room-code" maxlength="6" placeholder="ROOM CODE" autocomplete="off"><button id="join-room" class="button dark">Join <span>→</span></button></div><p id="home-error" class="error"></p>
+      </div>
+      <div class="home-foot"><span>NO DOWNLOADS. JUST YOUR PHONE.</span><span>MADE FOR FRIENDS WHO GET A LITTLE COMPETITIVE</span></div>
+    </section>
+    <section id="room" class="room-view hidden">
+      <div class="room-head"><div><div class="eyebrow">THE FLOATING ISLAND · ROUND <span id="round-number">1</span></div><h1 id="room-title">Crew camp</h1></div><div class="room-code-box"><small>ROOM CODE</small><button id="copy-code" aria-label="Copy room code"><b id="room-code-display">------</b><span>▢</span></button></div></div>
+      <div id="lobby-panel" class="lobby-panel"><div class="panel-top"><div><h2>Your crew is assembling</h2><p>Send the room code to your friends. At least two players needed to launch.</p></div><span class="player-count"><b id="player-count">1</b><small> / 8</small></span></div><div id="lobby-teams" class="lobby-teams"></div><div class="launch-row"><div class="launch-tip"><span>✳</span> Teams balance themselves as players join.</div><button id="start-game" class="button primary">Launch the round <span>↗</span></button></div></div>
+      <div id="game-panel" class="game-panel hidden">
+        <div class="scoreboard"><div id="score-0" class="score-card ember"><div><span class="team-dot"></span><span id="team-name-0">Ember Crew</span></div><b id="points-0">0</b><small>POINTS</small></div><div class="timer"><span class="timer-label">STORM IN</span><b id="timer">5:00</b><div class="timer-track"><i id="timer-bar"></i></div></div><div id="score-1" class="score-card tide"><div><span class="team-dot"></span><span id="team-name-1">Tide Crew</span></div><b id="points-1">0</b><small>POINTS</small></div></div>
+        <div id="event-banner" class="event-banner"><span>✦</span> All sites are open</div>
+        <div class="game-columns"><section class="island-panel"><div class="section-heading"><div><div class="eyebrow">PICK A SPOT</div><h2>Scour the island</h2></div><span class="live-pill"><i></i> LIVE</span></div><div id="sites" class="sites"></div><div class="gather-hint">Tap a site to bring materials back to your crew’s shared stash.</div></section>
+          <aside class="right-rail"><section class="order-panel"><div class="eyebrow">SETTLEMENT ORDER</div><div class="order-title"><span>📦</span><h3 id="order-name">Beacon Repair</h3></div><div id="order-costs" class="order-costs"></div><div class="order-footer"><div><b id="order-points">8</b><small>PTS</small></div><button id="deliver-order" class="button dark">Deliver <span>→</span></button></div></section>
+            <section class="stash-panel"><div class="section-heading"><div><div class="eyebrow">YOUR TEAM’S</div><h3>Shared stash</h3></div><span id="my-team-pill" class="my-team-pill">EMBER</span></div><div class="stash-grid"><div><span>🪵</span><small>WOOD</small><b id="stash-wood">0</b></div><div><span>🪨</span><small>STONE</small><b id="stash-stone">0</b></div><div><span>💎</span><small>CRYSTAL</small><b id="stash-crystal">0</b></div></div></section>
+          </aside></div>
+      </div>
+      <div id="result-panel" class="result-panel hidden"><div class="result-medal">✦</div><div class="eyebrow">THE STORM HAS PASSED</div><h2 id="result-title">Ember Crew wins!</h2><p id="result-copy">The island is saved.</p><div class="result-scores" id="result-scores"></div><button id="rematch" class="button primary">Run it back <span>↗</span></button></div>
+      <p id="room-error" class="error room-error"></p>
+    </section>
+  </main>
+  <div id="toast" class="toast"></div><script src="/app.js"></script>
+</body>
+</html>
