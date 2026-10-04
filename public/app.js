@@ -76,7 +76,7 @@ function renderGame(me) {
     return `<span class="crew-trip-chip">${escapeHtml(player.name)} · ${site?.icon || '✦'} ${escapeHtml(site?.name || 'on trip')}</span>`;
   }).join('');
   const activeTrips = room.players.filter((player) => player.trip);
-  $('trip-count').textContent = `${activeTrips.length} AT SEA`;
+  $('trip-count').textContent = `${activeTrips.length} EXPLORING`;
   $('trip-markers').innerHTML = activeTrips.map((player) => {
     const elapsed = Math.max(0, Date.now() - player.trip.startedAt);
     const duration = Math.max(1, player.trip.endsAt - player.trip.startedAt);
