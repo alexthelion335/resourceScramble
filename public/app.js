@@ -213,6 +213,7 @@ $('trip-status').addEventListener('click', async (event) => {
       $('puzzle-title').textContent = 'Count the signal';
       $('puzzle-instructions').textContent = `Memorize the display. How many ${puzzleSymbols[countTarget]} symbols did you see?`;
       $('puzzle-sequence').classList.add('count-grid');
+      $('puzzle-sequence').classList.remove('count-answer');
       $('puzzle-sequence').innerHTML = countSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
     } else {
       $('puzzle-title').textContent = 'Repeat the signal';
@@ -243,6 +244,7 @@ $('puzzle-input').addEventListener('click', async (event) => {
   $('puzzle-sequence').innerHTML = puzzleType === 'count'
     ? `<span>${puzzleAnswer[0]}</span>`
     : puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(4 - puzzleAnswer.length);
+  if (puzzleType === 'count') $('puzzle-sequence').classList.add('count-answer');
   if (puzzleAnswer.length !== requiredAnswers) return;
   try {
     const result = await api('puzzle', { code: room.code, playerId, sequence: puzzleAnswer });
