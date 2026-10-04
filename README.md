@@ -19,6 +19,7 @@ When returning in the same browser, the home screen offers to continue the last 
 - Create a room and share its six-character code. Up to eight players join from their own devices.
 - Players are assigned to whichever of the two crews has fewer members.
 - The host starts once at least two players have joined.
+- New players see a short four-step tutorial before the round. Their teammates wait in a crew briefing, and the round starts when everyone finishes or after one minute.
 - Choose an active island site to begin a 30-second trip. You are committed to gathering that site's resource for the trip, and one supply is added to the shared stash automatically every six seconds.
 - Try the site's one-time memory puzzle during a trip to earn a powerup. Trips can also uncover powerups at random. Keep up to two; select one before departing to double your first haul, return sooner, or add supplies to your chosen resource.
 - Each crew has its own settlement order and progression. Spend materials from your shared stash to earn points; only your crew's next order changes when you deliver.

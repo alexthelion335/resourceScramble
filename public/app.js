@@ -5,7 +5,13 @@ if (storedTheme === 'light' || (!storedTheme && !systemDarkMode?.matches)) docum
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
-let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], pendingSession = null;
+let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], pendingSession = null, tutorialStep = 0;
+const tutorialSteps = [
+  ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs.'],
+  ['Your crew gathers together', 'Supplies arrive automatically every six seconds while you are away. Everyone on your team adds to the same stash, even when you are exploring different regions.'],
+  ['Solve site signals for a boost', 'Once during a trip, try the memory puzzle for a powerup. You can also discover powerups while gathering; choose one before your next trip.'],
+  ['Deliver your crew’s orders', 'Use the shared stash to complete your crew’s next settlement order. Your crew has its own order progression, and the highest score after ten minutes wins. A tie starts Golden Beacon sudden death.']
+];
 
 function setError(id, message = '') { $(id).textContent = message; }
 async function api(path, data = {}, method = 'POST') {
@@ -35,17 +41,41 @@ function render() {
   $('player-count').textContent = room.players.length;
   const myPlayer = room.players.find((p) => p.id === playerId);
   if (!myPlayer) return;
+  if (['playing', 'tiebreak', 'finished'].includes(room.phase) && !myPlayer.newPlayer) localStorage.setItem('resource-scramble-tutorial-complete', 'true');
   $('room-title').textContent = `Welcome, ${myPlayer.name}`;
   const lobby = room.phase === 'lobby';
   $('lobby-panel').classList.toggle('hidden', !lobby);
+  const inTutorial = room.phase === 'tutorial';
+  $('tutorial-panel').classList.toggle('hidden', !inTutorial);
   const inGame = ['playing', 'tiebreak'].includes(room.phase);
   $('game-panel').classList.toggle('hidden', !inGame);
   $('result-panel').classList.toggle('hidden', room.phase !== 'finished');
   $('start-game').disabled = room.players.length < 2 || myPlayer.id !== room.createdBy;
   $('start-game').textContent = myPlayer.id !== room.createdBy ? 'Waiting for host…' : room.players.length < 2 ? 'Waiting for players…' : 'Launch the round   ↗';
   renderTeams();
+  if (inTutorial) renderTutorial(myPlayer);
   if (inGame) renderGame(myPlayer);
   if (room.phase === 'finished') renderResult();
+}
+function renderTutorial(me) {
+  const isLearning = me.newPlayer && !me.tutorialDone;
+  $('tutorial-guide').classList.toggle('hidden', !isLearning);
+  $('tutorial-wait').classList.toggle('hidden', isLearning);
+  $('tutorial-wait-countdown').textContent = room.timeLeft;
+  if (!isLearning) return;
+  const [title, copy] = tutorialSteps[tutorialStep];
+  $('tutorial-step-count').textContent = `STEP ${tutorialStep + 1} OF ${tutorialSteps.length}`;
+  $('tutorial-title').textContent = title;
+  $('tutorial-copy').textContent = copy;
+  $('tutorial-back').disabled = tutorialStep === 0;
+  $('tutorial-next').textContent = tutorialStep === tutorialSteps.length - 1 ? 'Start the round' : 'Next';
+}
+async function completeTutorial() {
+  try {
+    const result = await api('tutorial-done', { code: room.code, playerId });
+    localStorage.setItem('resource-scramble-tutorial-complete', 'true');
+    room = result.room; render();
+  } catch (error) { setError('room-error', error.message); }
 }
 function renderTeams() {
   const me = room.players.find((player) => player.id === playerId);
@@ -128,7 +158,7 @@ function updateThemeButton() {
 
 $('create-room').addEventListener('click', async () => {
   setError('home-error'); $('create-room').disabled = true;
-  try { const result = await api('rooms', { name: currentName() }); enterRoom(result.room, result.playerId); }
+  try { const result = await api('rooms', { name: currentName(), newPlayer: localStorage.getItem('resource-scramble-tutorial-complete') !== 'true' }); enterRoom(result.room, result.playerId); }
   catch (error) { setError('home-error', error.message); }
   finally { $('create-room').disabled = false; }
 });
@@ -136,7 +166,7 @@ $('join-room').addEventListener('click', async () => {
   setError('home-error'); const code = $('room-code').value.trim().toUpperCase();
   if (!code) return setError('home-error', 'Enter a room code to join your crew.');
   $('join-room').disabled = true;
-  try { const result = await api('join', { code, name: currentName() }); enterRoom(result.room, result.playerId); }
+  try { const result = await api('join', { code, name: currentName(), newPlayer: localStorage.getItem('resource-scramble-tutorial-complete') !== 'true' }); enterRoom(result.room, result.playerId); }
   catch (error) { setError('home-error', error.message); }
   finally { $('join-room').disabled = false; }
 });
@@ -157,6 +187,12 @@ $('start-game').addEventListener('click', async () => {
   try { const result = await api('start', { code: room.code, playerId }); room = result.room; render(); }
   catch (error) { setError('room-error', error.message); }
 });
+$('tutorial-back').addEventListener('click', () => { tutorialStep = Math.max(0, tutorialStep - 1); renderTutorial(room.players.find((player) => player.id === playerId)); });
+$('tutorial-next').addEventListener('click', () => {
+  if (tutorialStep < tutorialSteps.length - 1) { tutorialStep += 1; renderTutorial(room.players.find((player) => player.id === playerId)); }
+  else completeTutorial();
+});
+$('tutorial-skip').addEventListener('click', completeTutorial);
 $('sites').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-site]'); if (!button || button.disabled) return;
   try { await api('trip', { code: room.code, playerId, siteId: button.dataset.site, boostId: selectedBoostId }); selectedBoostId = null; }
