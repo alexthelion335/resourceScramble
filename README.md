@@ -24,7 +24,7 @@ When returning in the same browser, the home screen offers to continue the last 
 - Each crew has its own settlement order and progression. Spend materials from your shared stash to earn points; only your crew's next order changes when you deliver.
 - Resource sites rotate through short rest periods. Crystal showers sometimes double crystal yields. Your crew can split up across sites or coordinate on one resource.
 - At four or more players, each crew can customize its name and emblem in the lobby.
-- At ten minutes, the higher score wins. A tie goes to the crew with more supplies left; if those are tied too, the game is a draw.
+- At ten minutes, the higher score wins. If scores are tied, a two-minute sudden-death round begins: the first crew to deliver a Golden Beacon wins. If neither crew delivers in time, the bigger overtime haul wins, followed by remaining supplies; a perfectly even overtime ends with a coin flip.
 
 The host can start a rematch from the result screen.
 

@@ -38,12 +38,13 @@ function render() {
   $('room-title').textContent = `Welcome, ${myPlayer.name}`;
   const lobby = room.phase === 'lobby';
   $('lobby-panel').classList.toggle('hidden', !lobby);
-  $('game-panel').classList.toggle('hidden', room.phase !== 'playing');
+  const inGame = ['playing', 'tiebreak'].includes(room.phase);
+  $('game-panel').classList.toggle('hidden', !inGame);
   $('result-panel').classList.toggle('hidden', room.phase !== 'finished');
   $('start-game').disabled = room.players.length < 2 || myPlayer.id !== room.createdBy;
   $('start-game').textContent = myPlayer.id !== room.createdBy ? 'Waiting for host…' : room.players.length < 2 ? 'Waiting for players…' : 'Launch the round   ↗';
   renderTeams();
-  if (room.phase === 'playing') renderGame(myPlayer);
+  if (inGame) renderGame(myPlayer);
   if (room.phase === 'finished') renderResult();
 }
 function renderTeams() {
@@ -61,8 +62,11 @@ function renderGame(me) {
     $(`team-name-${entry.id}`).textContent = entry.name; $(`points-${entry.id}`).textContent = entry.score; $(`team-symbol-${entry.id}`).textContent = entry.symbol;
   });
   const secs = Math.max(0, room.timeLeft);
+  $('timer-label').textContent = room.phase === 'tiebreak' ? 'SUDDEN DEATH' : 'STORM IN';
   $('timer').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-  $('timer-bar').style.width = `${(secs / room.duration) * 100}%`;
+  const timerDuration = room.phase === 'tiebreak' ? room.tiebreakDuration : room.duration;
+  $('timer-bar').style.width = `${(secs / timerDuration) * 100}%`;
+  $('event-banner').className = `event-banner ${room.phase === 'tiebreak' ? 'tiebreak-banner' : ''}`;
   $('event-banner').innerHTML = `<span>✦</span> ${escapeHtml(room.event)}`;
   const trip = me.trip;
   const tripSite = trip && room.sites.find((site) => site.id === trip.siteId);
@@ -93,18 +97,23 @@ function renderGame(me) {
   }).join('');
   for (const key of Object.keys(names)) $(`stash-${key}`).textContent = team.stash[key];
   $('my-team-pill').textContent = `${team.symbol} ${team.name}`; $('my-team-pill').className = `my-team-pill ${team.id ? 'tide-pill' : ''}`;
-  $('order-name').textContent = team.order.name; $('order-points').textContent = team.order.points;
+  $('order-kicker').textContent = room.phase === 'tiebreak' ? 'SUDDEN-DEATH ORDER' : 'YOUR CREW’S ORDER';
+  $('order-icon').textContent = room.phase === 'tiebreak' ? '🏆' : '📦';
+  $('order-name').textContent = team.order.name; $('order-points').textContent = room.phase === 'tiebreak' ? 'WIN' : team.order.points;
+  $('order-unit').textContent = room.phase === 'tiebreak' ? 'TO WIN' : 'PTS';
   $('order-costs').innerHTML = Object.entries(team.order.costs).map(([key, quantity]) => `<span class="cost-pill ${team.stash[key] >= quantity ? 'ready' : ''}">${icons[key]} ${team.stash[key]} / ${quantity} ${names[key]}</span>`).join('');
   const deliver = $('deliver-order'); deliver.disabled = !Object.entries(team.order.costs).every(([key, quantity]) => team.stash[key] >= quantity);
+  deliver.innerHTML = room.phase === 'tiebreak' ? 'Deliver to win <span>→</span>' : 'Deliver <span>→</span>';
   const boosts = me.boosts || [];
-  if (selectedBoostId && !boosts.some((boost) => boost.id === selectedBoostId)) selectedBoostId = null;
+  if (selectedBoostId && !boosts.some((boost) => boost.instanceId === selectedBoostId)) selectedBoostId = null;
   $('boost-count').textContent = `${boosts.length} / 2`;
-  $('powerups').innerHTML = boosts.length ? boosts.map((boost) => `<button class="powerup-card ${selectedBoostId === boost.id ? 'selected' : ''}" data-boost="${boost.id}" ${trip ? 'disabled' : ''}><span>${boost.icon}</span><b>${escapeHtml(boost.name)}${selectedBoostId === boost.id ? ' · READY' : ''}</b><small>${escapeHtml(boost.description)}</small></button>`).join('') : '<p class="powerup-empty">Find a powerup on a trip or solve a site puzzle.</p>';
+  $('powerups').innerHTML = boosts.length ? boosts.map((boost) => `<button class="powerup-card ${selectedBoostId === boost.instanceId ? 'selected' : ''}" data-boost="${boost.instanceId}" ${trip ? 'disabled' : ''}><span>${boost.icon}</span><b>${escapeHtml(boost.name)}${selectedBoostId === boost.instanceId ? ' · READY' : ''}</b><small>${escapeHtml(boost.description)}</small></button>`).join('') : '<p class="powerup-empty">Find a powerup on a trip or solve a site puzzle.</p>';
 }
 function renderResult() {
   const winner = room.winner;
   $('result-title').textContent = winner === 'draw' ? 'A perfect tie!' : `${room.teams[winner].name} wins!`;
-  $('result-copy').textContent = winner === 'draw' ? 'Both crews left with the same stash.' : 'The island is saved. The crew takes the crown.';
+  const tiebreakCopy = { golden_beacon: 'Won sudden death by delivering the Golden Beacon first.', overtime_haul: 'Won sudden death with the biggest overtime haul.', remaining_supplies: 'Won the final tiebreak with more supplies left.', coin_flip: 'The crews stayed even through sudden death. A coin flip decided it.' };
+  $('result-copy').textContent = winner === 'draw' ? 'Both crews left with the same stash.' : room.tiebreakMethod ? tiebreakCopy[room.tiebreakMethod] : 'The island is saved. The crew takes the crown.';
   $('result-scores').innerHTML = room.teams.map((team) => `<div><small>${escapeHtml(team.symbol)} ${escapeHtml(team.name)}</small><b>${team.score} pts</b><small>${Object.values(team.stash).reduce((a,b)=>a+b,0)} supplies left</small></div>`).join('');
   $('rematch').classList.toggle('hidden', room.players.find((p) => p.id === playerId)?.id !== room.createdBy);
 }
@@ -193,7 +202,8 @@ $('puzzle-input').addEventListener('click', async (event) => {
 });
 $('puzzle-close').addEventListener('click', () => $('puzzle-modal').classList.add('hidden'));
 $('deliver-order').addEventListener('click', async () => {
-  try { await api('order', { code: room.code, playerId }); toast('Order delivered! Points for your crew.'); }
+  const wasTiebreak = room.phase === 'tiebreak';
+  try { await api('order', { code: room.code, playerId }); toast(wasTiebreak ? 'Golden Beacon delivered!' : 'Order delivered! Points for your crew.'); }
   catch (error) { toast(error.message); }
 });
 $('copy-code').addEventListener('click', async () => {
@@ -229,7 +239,7 @@ window.addEventListener('pagehide', () => { if (stream) stream.close(); });
     const player = result.room.players.find((p) => p.id === session.playerId);
     if (!player) { localStorage.removeItem('resource-scramble-session'); return; }
     $('return-title').textContent = `Continue as ${player.name}`;
-    const phase = { lobby: 'Waiting in the lobby', playing: 'Round in progress', finished: 'Last round finished' }[result.room.phase] || 'Room available';
+    const phase = { lobby: 'Waiting in the lobby', playing: 'Round in progress', tiebreak: 'Sudden-death tiebreak', finished: 'Last round finished' }[result.room.phase] || 'Room available';
     $('return-meta').textContent = `${result.room.code} · ${phase}`;
     $('return-session').classList.remove('hidden');
   } catch (error) {

@@ -26,8 +26,8 @@ function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
     players: [...room.players.values()].map(({ id, name, team, online, trip, boosts }) => ({ id, name, team, online, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
-    teams: room.teams, timeLeft: room.phase === 'playing' ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
-    duration: room.duration, round: room.round, winner: room.winner,
+    teams: room.teams, timeLeft: ['playing', 'tiebreak'].includes(room.phase) ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
+    duration: room.duration, tiebreakDuration: room.tiebreakDuration, round: room.round, winner: room.winner, tiebreakMethod: room.tiebreakMethod,
     sites: room.sites, event: room.event,
   };
 }
@@ -50,7 +50,7 @@ function createRoom(name) {
   const id = crypto.randomUUID();
   const room = {
     code, phase: 'lobby', createdBy: id, players: new Map([[id, { id, name: cleanName(name), team: 0, online: true, boosts: [], trip: null }]]),
-    teams: newTeams(), duration: 600, round: 1, winner: null,
+    teams: newTeams(), duration: 600, tiebreakDuration: 120, tiebreakHauls: [0, 0], tiebreakMethod: null, round: 1, winner: null,
     sites: [
       { id: 'grove', name: 'Driftwood Grove', resource: 'wood', icon: '🌲', active: true },
       { id: 'quarry', name: 'Cloudstone Ridge', resource: 'stone', icon: '🪨', active: true },
@@ -72,7 +72,7 @@ async function body(req) {
 function auth(room, id) { return room.players.get(id); }
 function start(room) {
   if (room.phase !== 'lobby' || room.players.size < 2) return false;
-  room.phase = 'playing'; room.endsAt = Date.now() + room.duration * 1000; room.winner = null; room.nextRotation = Date.now() + 25000;
+  room.phase = 'playing'; room.endsAt = Date.now() + room.duration * 1000; room.winner = null; room.tiebreakMethod = null; room.tiebreakHauls = [0, 0]; room.nextRotation = Date.now() + 25000;
   room.sites.forEach((site) => { site.active = true; }); room.event = 'All sites are open';
   room.timer = setInterval(() => {
     const left = Math.ceil((room.endsAt - Date.now()) / 1000);
@@ -84,13 +84,14 @@ function start(room) {
         let amount = room.event === 'Crystal showers' && trip.resource === 'crystal' ? 2 : 1;
         if (trip.boostId === 'lucky_pick' && trip.yields === 0) amount *= 2;
         room.teams[player.team].stash[trip.resource] += amount;
+        if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += amount;
         trip.yields += amount;
         trip.nextYieldAt += trip.yieldIntervalMs;
         if (player.boosts.length < 2 && Math.random() < 0.035) player.boosts.push(randomBoost());
       }
       if (Date.now() >= trip.endsAt || left <= 0) player.trip = null;
     }
-    if (left > 0 && Date.now() >= room.nextRotation) {
+    if (room.phase === 'playing' && left > 0 && Date.now() >= room.nextRotation) {
       room.sites.forEach((site) => { site.active = true; });
       const resting = room.sites[Math.floor(Math.random() * room.sites.length)];
       resting.active = false;
@@ -101,18 +102,32 @@ function start(room) {
         crystal.active = true; room.event = 'Crystal showers · crystal yields double';
       }
     }
-    if (left <= 0) {
-      room.phase = 'finished'; clearInterval(room.timer);
-      for (const player of room.players.values()) player.trip = null;
+    if (left <= 0 && room.phase === 'playing') {
       const [a, b] = room.teams;
-      room.winner = a.score === b.score ? (sum(a.stash) === sum(b.stash) ? 'draw' : sum(a.stash) > sum(b.stash) ? 0 : 1) : a.score > b.score ? 0 : 1;
+      if (a.score === b.score) {
+        room.phase = 'tiebreak'; room.endsAt = Date.now() + room.tiebreakDuration * 1000; room.tiebreakHauls = [0, 0]; room.nextRotation = Date.now() + 10000;
+        room.sites.forEach((site) => { site.active = true; });
+        room.event = 'SUDDEN DEATH · Deliver the Golden Beacon first to win';
+        for (const team of room.teams) team.order = { name: 'Golden Beacon', costs: { wood: 3, stone: 3, crystal: 3 }, points: 0, id: crypto.randomUUID() };
+        for (const player of room.players.values()) player.trip = null;
+      } else {
+        room.phase = 'finished'; clearInterval(room.timer); room.winner = a.score > b.score ? 0 : 1;
+        for (const player of room.players.values()) player.trip = null;
+      }
+    } else if (left <= 0 && room.phase === 'tiebreak') {
+      room.phase = 'finished'; clearInterval(room.timer);
+      const [a, b] = room.teams;
+      if (room.tiebreakHauls[0] !== room.tiebreakHauls[1]) { room.winner = room.tiebreakHauls[0] > room.tiebreakHauls[1] ? 0 : 1; room.tiebreakMethod = 'overtime_haul'; }
+      else if (sum(a.stash) !== sum(b.stash)) { room.winner = sum(a.stash) > sum(b.stash) ? 0 : 1; room.tiebreakMethod = 'remaining_supplies'; }
+      else { room.winner = Math.random() < 0.5 ? 0 : 1; room.tiebreakMethod = 'coin_flip'; }
+      for (const player of room.players.values()) player.trip = null;
     }
     emit(room);
   }, 1000);
   emit(room); return true;
 }
 function sum(obj) { return RESOURCES.reduce((n, key) => n + obj[key], 0); }
-function randomBoost() { return { ...BOOSTS[Math.floor(Math.random() * BOOSTS.length)] }; }
+function randomBoost() { return { ...BOOSTS[Math.floor(Math.random() * BOOSTS.length)], instanceId: crypto.randomUUID() }; }
 function enough(stash, costs) { return Object.entries(costs).every(([key, qty]) => stash[key] >= qty); }
 function jsonRoute(req, res, pathname, data) {
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' }); return res.end(); }
@@ -160,7 +175,7 @@ function jsonRoute(req, res, pathname, data) {
     emit(room); return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/puzzle' && req.method === 'GET') {
-    if (room.phase !== 'playing' || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
+    if (!['playing', 'tiebreak'].includes(room.phase) || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
     if (player.trip.puzzleSolved || player.trip.puzzleAttempted) return send(res, 409, { error: 'You have already tried this trip’s puzzle.' });
     player.trip.puzzleAttempted = true;
     emit(room);
@@ -172,13 +187,13 @@ function jsonRoute(req, res, pathname, data) {
     return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/trip' && req.method === 'POST') {
-    if (room.phase !== 'playing') return send(res, 409, { error: 'The round is not running.' });
+    if (!['playing', 'tiebreak'].includes(room.phase)) return send(res, 409, { error: 'The round is not running.' });
     if (player.trip) return send(res, 409, { error: 'Finish your current trip before choosing another site.' });
     const site = room.sites.find((s) => s.id === data.siteId);
     if (!site || !site.active) return send(res, 409, { error: 'That site is resting. Try another one.' });
     let boost = null;
     if (data.boostId) {
-      const index = player.boosts.findIndex((item) => item.id === data.boostId);
+      const index = player.boosts.findIndex((item) => item.instanceId === data.boostId);
       if (index < 0) return send(res, 409, { error: 'That powerup is no longer in your kit.' });
       boost = player.boosts.splice(index, 1)[0];
     }
@@ -186,11 +201,14 @@ function jsonRoute(req, res, pathname, data) {
     const tripMs = boost?.id === 'swift_boots' ? 20000 : 30000;
     const yieldIntervalMs = boost?.id === 'swift_boots' ? 4000 : 6000;
     player.trip = { siteId: site.id, resource: site.resource, startedAt: now, endsAt: now + tripMs, nextYieldAt: now + yieldIntervalMs, yieldIntervalMs, yields: 0, puzzleSolved: false, puzzleAttempted: false, puzzleSequence: Array.from({ length: 4 }, () => Math.floor(Math.random() * 4)), boostId: boost?.id || null };
-    if (boost?.id === 'supply_flare') room.teams[player.team].stash[site.resource] += 3;
+    if (boost?.id === 'supply_flare') {
+      room.teams[player.team].stash[site.resource] += 3;
+      if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += 3;
+    }
     emit(room); return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/puzzle' && req.method === 'POST') {
-    if (room.phase !== 'playing' || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
+    if (!['playing', 'tiebreak'].includes(room.phase) || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
     if (!player.trip.puzzleAttempted || player.trip.puzzleSolved) return send(res, 409, { error: 'Open the puzzle before submitting.' });
     const answer = Array.isArray(data.sequence) ? data.sequence : [];
     const correct = answer.length === 4 && answer.every((value, index) => value === player.trip.puzzleSequence[index]);
@@ -198,22 +216,31 @@ function jsonRoute(req, res, pathname, data) {
     if (correct) {
       player.trip.puzzleSolved = true;
       if (player.boosts.length < 2) { reward = randomBoost(); player.boosts.push(reward); }
-      else room.teams[player.team].stash[player.trip.resource] += 2;
+      else {
+        room.teams[player.team].stash[player.trip.resource] += 2;
+        if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += 2;
+      }
     }
     emit(room); return send(res, 200, { correct, boost: reward, consolation: correct && !reward });
   }
   if (pathname === '/api/order' && req.method === 'POST') {
-    if (room.phase !== 'playing') return send(res, 409, { error: 'The round is not running.' });
+    if (!['playing', 'tiebreak'].includes(room.phase)) return send(res, 409, { error: 'The round is not running.' });
     const team = room.teams[player.team];
     if (!enough(team.stash, team.order.costs)) return send(res, 409, { error: 'Your stash needs more materials for this order.' });
     for (const [key, qty] of Object.entries(team.order.costs)) team.stash[key] -= qty;
-    team.score += team.order.points; team.order = newOrder(); emit(room);
+    if (room.phase === 'tiebreak') {
+      room.winner = team.id; room.phase = 'finished'; room.tiebreakMethod = 'golden_beacon'; room.event = `${team.name} delivered the Golden Beacon first!`; clearInterval(room.timer);
+      for (const member of room.players.values()) member.trip = null;
+    } else {
+      team.score += team.order.points; team.order = newOrder();
+    }
+    emit(room);
     return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/rematch' && req.method === 'POST') {
     if (room.phase !== 'finished') return send(res, 409, { error: 'The round is still underway.' });
     if (player.id !== room.createdBy) return send(res, 403, { error: 'Only the host can start a rematch.' });
-    room.teams = newTeams(); room.phase = 'lobby'; room.winner = null; room.round += 1;
+    room.teams = newTeams(); room.phase = 'lobby'; room.winner = null; room.tiebreakMethod = null; room.round += 1;
     for (const member of room.players.values()) { member.trip = null; member.boosts = []; }
     emit(room);
     return send(res, 200, { room: publicRoom(room) });
