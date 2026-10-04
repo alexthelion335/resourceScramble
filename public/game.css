@@ -1,2 +1,54 @@
 .trip-status{margin-top:18px;border-radius:9px;background:#f1f4eb;border:1px solid #e4eadf;padding:13px 14px;min-height:54px}.trip-ready{display:flex;align-items:center;justify-content:space-between;gap:10px}.trip-ready b{font:600 12px var(--display)}.trip-ready span{font-size:10px;color:#7d887d}.trip-active{display:grid;grid-template-columns:1fr auto;gap:5px 12px;align-items:center}.trip-active strong{font:600 13px var(--display)}.trip-active small{font-size:10px;color:#758175}.trip-progress{height:5px;background:#dce4d7;border-radius:5px;overflow:hidden;grid-column:1/-1;margin-top:4px}.trip-progress i{height:100%;display:block;background:#6c966b;transition:width .5s linear}.puzzle-button{background:#fff;border:1px solid #e1e6dc;border-radius:6px;color:#466348;font:700 9px var(--sans);padding:7px 10px;cursor:pointer;grid-column:1/-1;justify-self:start;margin-top:5px}.crew-trips{font-size:10px;color:#788379;margin-top:13px;display:flex;flex-wrap:wrap;gap:5px}.crew-trip-chip{border:1px solid #e7e5dc;background:#fffdf8;border-radius:20px;padding:5px 8px}.powerup-head{border-top:1px solid #eeeae1;margin-top:15px;padding-top:12px;display:flex;justify-content:space-between;font-size:8px;font-weight:800;letter-spacing:1px;color:#8c958c}.powerup-head small{font:700 9px var(--sans);letter-spacing:0}.powerups{display:flex;flex-direction:column;gap:6px;margin-top:9px}.powerup-card{border:1px solid #e8e5dc;border-radius:7px;background:#faf8f2;color:var(--ink);padding:8px 9px;display:grid;grid-template-columns:23px 1fr;gap:1px 6px;text-align:left;cursor:pointer}.powerup-card.selected{border-color:#84a58a;background:#edf5ec;box-shadow:0 0 0 2px #315b4510}.powerup-card:disabled{cursor:default;opacity:.8}.powerup-card>span{grid-row:span 2;font-size:14px}.powerup-card b{font:700 10px var(--display)}.powerup-card small{font-size:8px;color:#7d887e;line-height:1.3}.powerup-empty{font-size:9px;color:#92998f;margin:0}.puzzle-modal{position:fixed;inset:0;background:#19231f9c;display:grid;place-items:center;padding:18px;z-index:10}.puzzle-card{position:relative;width:min(100%,380px);background:#fffdf8;border:1px solid var(--line);border-radius:14px;padding:30px;text-align:center;box-shadow:0 20px 70px #0003}.puzzle-card h2{font:600 25px var(--display);letter-spacing:-1px;margin:8px 0}.puzzle-card p{color:#7f897f;font-size:12px;line-height:1.5}.puzzle-close{position:absolute;right:13px;top:10px;border:0;background:transparent;font-size:25px;color:#758078;cursor:pointer}.puzzle-sequence{display:flex;justify-content:center;gap:10px;min-height:48px;align-items:center;margin:20px 0}.puzzle-sequence span{display:grid;place-items:center;width:42px;height:42px;border-radius:9px;background:#eef2e8;font-size:22px}.puzzle-input{display:flex;justify-content:center;gap:8px;margin:20px 0}.puzzle-symbol{width:48px;height:48px;border:1px solid #e5e5da;background:#f6f4ed;border-radius:9px;font-size:23px;cursor:pointer}.puzzle-symbol:hover{border-color:#8ba88d}.puzzle-message{min-height:16px;font-size:11px;font-weight:700;color:#528057}.puzzle-message.wrong{color:#b7523b}
 @media(max-width:700px){.trip-status{margin-top:13px;padding:11px}.right-rail{align-items:stretch}.stash-panel .powerup-card small{font-size:7px}.powerup-card{padding:7px 6px;grid-template-columns:19px 1fr;gap:1px 4px}.powerup-card>span{font-size:12px}.powerup-card b{font-size:9px}}
+.header-actions{display:flex;align-items:center;gap:20px}.theme-toggle{width:33px;height:33px;border:1px solid #384641;border-radius:50%;background:#202b28;color:#ffdda4;font:20px var(--sans);display:grid;place-items:center;cursor:pointer}.theme-toggle:hover{background:#2d3935}
+body:not(.light-mode){--ink:#e6ece8;--muted:#a0aaa3;--paper:#111916;--card:#1b2421;--line:#303a35;--green:#78a985;background:#111916;color:#e6ece8;color-scheme:dark}
+body:not(.light-mode) .paper-grain{opacity:.08}
+body:not(.light-mode) .topbar{border-color:#303a35}
+body:not(.light-mode) .brand{color:#e6ece8}body:not(.light-mode) .brand span:last-child{color:#a0aaa3}
+body:not(.light-mode) .top-note,body:not(.light-mode) .eyebrow{color:#a3aea6}
+body:not(.light-mode) .hero-copy .eyebrow{color:#9bc3a0}
+body:not(.light-mode) .hero-copy h1 em{color:#a2c5a5}
+body:not(.light-mode) .hero-copy>p{color:#a9b4ad}
+body:not(.light-mode) .game-facts small,body:not(.light-mode) .home-foot{color:#89968d}
+body:not(.light-mode) .lobby-card,body:not(.light-mode) .lobby-panel,body:not(.light-mode) .order-panel,body:not(.light-mode) .stash-panel,body:not(.light-mode) .island-panel,body:not(.light-mode) .result-panel{background:#1b2421;border-color:#303a35;box-shadow:0 18px 50px #0002}
+body:not(.light-mode) .lobby-card label,body:not(.light-mode) .lobby-card .eyebrow{color:#a0aaa3}
+body:not(.light-mode) .lobby-card input,body:not(.light-mode) .join-row input{background:#131b18;border-color:#38443e;color:#edf3ef}
+body:not(.light-mode) .lobby-card input::placeholder,body:not(.light-mode) .join-row input::placeholder{color:#78857d}
+body:not(.light-mode) .divider{color:#87938a}body:not(.light-mode) .divider:before,body:not(.light-mode) .divider:after{background:#303a35}
+body:not(.light-mode) .panel-top p,body:not(.light-mode) .launch-tip{color:#a1aca4}
+body:not(.light-mode) .team-box.ember{background:#30241f;border-color:#51392d}body:not(.light-mode) .team-box.tide{background:#1d2b36;border-color:#2d4657}
+body:not(.light-mode) .team-box.ember .team-box-head{color:#f09a70}body:not(.light-mode) .team-box.tide .team-box-head{color:#82b8e8}
+body:not(.light-mode) .player-chip{background:#252f2b;color:#dce5df}
+body:not(.light-mode) .launch-row,body:not(.light-mode) .stash-grid>div{border-color:#303a35}
+body:not(.light-mode) .score-card{background:#1b2421;border-color:#303a35}
+body:not(.light-mode) .score-card>small,body:not(.light-mode) .timer-label,body:not(.light-mode) .room-code-box small,body:not(.light-mode) .order-footer small,body:not(.light-mode) .stash-grid small{color:#9aa59d}
+body:not(.light-mode) .timer-track{background:#35413b}
+body:not(.light-mode) .event-banner{background:#222e27;border-color:#35473a;color:#b6d1b5}
+body:not(.light-mode) .live-pill{color:#9fd3a4}
+body:not(.light-mode) .site-card{background:#202a26;border-color:#35413b;color:#e3ebe6}
+body:not(.light-mode) .site-card:hover{background:#28342f;border-color:#587260}
+body:not(.light-mode) .site-card:disabled:hover{background:#202a26;border-color:#35413b}
+body:not(.light-mode) .site-card small,body:not(.light-mode) .gather-hint,body:not(.light-mode) .trip-ready span,body:not(.light-mode) .trip-active small,body:not(.light-mode) .crew-trips{color:#9ba79e}
+body:not(.light-mode) .trip-status{background:#202c25;border-color:#344439}
+body:not(.light-mode) .trip-progress{background:#35443a}
+body:not(.light-mode) .puzzle-button{background:#29382e;border-color:#405745;color:#b3d5b4}
+body:not(.light-mode) .crew-trip-chip{background:#202a26;border-color:#35413b;color:#cad6ce}
+body:not(.light-mode) .order-title span{background:#393329}
+body:not(.light-mode) .cost-pill{background:#29332e;color:#c4d0c7}
+body:not(.light-mode) .cost-pill.ready{background:#26392a;color:#a8d4ac}
+body:not(.light-mode) .order-footer{border-color:#303a35}
+body:not(.light-mode) .my-team-pill{background:#3a2b24;color:#f09a70}
+body:not(.light-mode) .my-team-pill.tide-pill{background:#243340;color:#82b8e8}
+body:not(.light-mode) .powerup-head{border-color:#303a35;color:#a2ada5}
+body:not(.light-mode) .powerup-card{background:#202a26;border-color:#35413b;color:#e3ebe6}
+body:not(.light-mode) .powerup-card.selected{background:#293b2f;border-color:#66856b}
+body:not(.light-mode) .powerup-card small,body:not(.light-mode) .powerup-empty{color:#9ba79e}
+body:not(.light-mode) .result-panel p,body:not(.light-mode) .result-scores small{color:#a1aca4}
+body:not(.light-mode) .result-scores div{background:#232d29}
+body:not(.light-mode) .puzzle-card{background:#1b2421;border-color:#39443e;color:#e6ece8}
+body:not(.light-mode) .puzzle-card p{color:#a1aca4}
+body:not(.light-mode) .puzzle-sequence span{background:#2a362e}
+body:not(.light-mode) .puzzle-symbol{background:#232d29;border-color:#39443e;color:#e6ece8}
+body:not(.light-mode) .toast{background:#e6ece8;color:#1b2421}
+body.light-mode .theme-toggle{background:#fffdf8;border-color:#e7e2d6;color:#59685c}
+@media(max-width:700px){.header-actions{gap:12px}.theme-toggle{width:30px;height:30px;font-size:18px}}

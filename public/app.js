@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+if (localStorage.getItem('resource-scramble-theme') === 'light') document.body.classList.add('light-mode');
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [];
@@ -77,9 +78,9 @@ function renderGame(me) {
   for (const key of Object.keys(names)) $(`stash-${key}`).textContent = team.stash[key];
   const ownTeam = team.id === 0 ? 'EMBER' : 'TIDE';
   $('my-team-pill').textContent = ownTeam; $('my-team-pill').className = `my-team-pill ${team.id ? 'tide-pill' : ''}`;
-  $('order-name').textContent = room.order.name; $('order-points').textContent = room.order.points;
-  $('order-costs').innerHTML = Object.entries(room.order.costs).map(([key, quantity]) => `<span class="cost-pill ${team.stash[key] >= quantity ? 'ready' : ''}">${icons[key]} ${team.stash[key]} / ${quantity} ${names[key]}</span>`).join('');
-  const deliver = $('deliver-order'); deliver.disabled = !Object.entries(room.order.costs).every(([key, quantity]) => team.stash[key] >= quantity);
+  $('order-name').textContent = team.order.name; $('order-points').textContent = team.order.points;
+  $('order-costs').innerHTML = Object.entries(team.order.costs).map(([key, quantity]) => `<span class="cost-pill ${team.stash[key] >= quantity ? 'ready' : ''}">${icons[key]} ${team.stash[key]} / ${quantity} ${names[key]}</span>`).join('');
+  const deliver = $('deliver-order'); deliver.disabled = !Object.entries(team.order.costs).every(([key, quantity]) => team.stash[key] >= quantity);
   const boosts = me.boosts || [];
   if (selectedBoostId && !boosts.some((boost) => boost.id === selectedBoostId)) selectedBoostId = null;
   $('boost-count').textContent = `${boosts.length} / 2`;
@@ -94,6 +95,12 @@ function renderResult() {
 }
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
 function toast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1700); }
+function updateThemeButton() {
+  const light = document.body.classList.contains('light-mode');
+  $('theme-toggle').textContent = light ? '☾' : '☼';
+  $('theme-toggle').setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
+  $('theme-toggle').title = light ? 'Switch to dark mode' : 'Switch to light mode';
+}
 
 $('create-room').addEventListener('click', async () => {
   setError('home-error'); $('create-room').disabled = true;
@@ -171,6 +178,12 @@ $('rematch').addEventListener('click', async () => {
   try { const result = await api('rematch', { code: room.code, playerId }); room = result.room; render(); }
   catch (error) { setError('room-error', error.message); }
 });
+$('theme-toggle').addEventListener('click', () => {
+  const light = document.body.classList.toggle('light-mode');
+  localStorage.setItem('resource-scramble-theme', light ? 'light' : 'dark');
+  updateThemeButton();
+});
+updateThemeButton();
 window.addEventListener('pagehide', () => { if (stream) stream.close(); });
 
 // Rejoin a room after a refresh on this device; the session token is local to this browser.

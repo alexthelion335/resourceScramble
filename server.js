@@ -25,7 +25,7 @@ function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
     players: [...room.players.values()].map(({ id, name, team, online, trip, boosts }) => ({ id, name, team, online, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yields: trip.yields, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
-    teams: room.teams, order: room.order, timeLeft: room.phase === 'playing' ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
+    teams: room.teams, timeLeft: room.phase === 'playing' ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
     duration: room.duration, round: room.round, winner: room.winner,
     sites: room.sites, event: room.event,
   };
@@ -35,7 +35,9 @@ function emit(room) {
   for (const res of room.listeners) res.write(data);
 }
 function newTeams() {
-  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 } }));
+  const orders = [newOrder(), newOrder()];
+  while (orders[0].name === orders[1].name) orders[1] = newOrder();
+  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id] }));
 }
 function newOrder() {
   const order = ORDERS[Math.floor(Math.random() * ORDERS.length)];
@@ -47,7 +49,7 @@ function createRoom(name) {
   const id = crypto.randomUUID();
   const room = {
     code, phase: 'lobby', createdBy: id, players: new Map([[id, { id, name: cleanName(name), team: 0, online: true, boosts: [], trip: null }]]),
-    teams: newTeams(), order: newOrder(), duration: 300, round: 1, winner: null,
+    teams: newTeams(), duration: 300, round: 1, winner: null,
     sites: [
       { id: 'grove', name: 'Driftwood Grove', resource: 'wood', icon: '🌲', active: true },
       { id: 'quarry', name: 'Cloudstone Ridge', resource: 'stone', icon: '🪨', active: true },
@@ -189,15 +191,15 @@ function jsonRoute(req, res, pathname, data) {
   if (pathname === '/api/order' && req.method === 'POST') {
     if (room.phase !== 'playing') return send(res, 409, { error: 'The round is not running.' });
     const team = room.teams[player.team];
-    if (!enough(team.stash, room.order.costs)) return send(res, 409, { error: 'Your stash needs more materials for this order.' });
-    for (const [key, qty] of Object.entries(room.order.costs)) team.stash[key] -= qty;
-    team.score += room.order.points; room.order = newOrder(); emit(room);
+    if (!enough(team.stash, team.order.costs)) return send(res, 409, { error: 'Your stash needs more materials for this order.' });
+    for (const [key, qty] of Object.entries(team.order.costs)) team.stash[key] -= qty;
+    team.score += team.order.points; team.order = newOrder(); emit(room);
     return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/rematch' && req.method === 'POST') {
     if (room.phase !== 'finished') return send(res, 409, { error: 'The round is still underway.' });
     if (player.id !== room.createdBy) return send(res, 403, { error: 'Only the host can start a rematch.' });
-    room.teams = newTeams(); room.order = newOrder(); room.phase = 'lobby'; room.winner = null; room.round += 1;
+    room.teams = newTeams(); room.phase = 'lobby'; room.winner = null; room.round += 1;
     for (const member of room.players.values()) { member.trip = null; member.boosts = []; }
     emit(room);
     return send(res, 200, { room: publicRoom(room) });
