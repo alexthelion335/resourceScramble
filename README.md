@@ -17,9 +17,10 @@ Open `http://localhost:3000` to create a room. To play with others on your local
 - Create a room and share its six-character code. Up to eight players join from their own devices.
 - Players are assigned to whichever of the two crews has fewer members.
 - The host starts once at least two players have joined.
-- Tap an active island site to add its material to your crew’s shared stash. Each player can gather about once per second.
+- Choose an active island site to begin a 40-second trip. You are committed to gathering that site's resource for the trip, and one supply is added to the shared stash automatically every eight seconds.
+- Try the site's one-time memory puzzle during a trip to earn a powerup. Trips can also uncover powerups at random. Keep up to two; select one before departing to double your first haul, return sooner, or add supplies to your chosen resource.
 - Spend the materials shown on the settlement order to earn its points. The next order appears immediately.
-- Resource sites rotate through short rest periods. Crystal showers sometimes double crystal yields.
+- Resource sites rotate through short rest periods. Crystal showers sometimes double crystal yields. Your crew can split up across sites or coordinate on one resource.
 - At five minutes, the higher score wins. A tie goes to the crew with more supplies left; if those are tied too, the game is a draw.
 
 The host can start a rematch from the result screen.

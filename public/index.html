@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#f4f0e7"><title>Resource Scramble</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/game.css">
 </head>
 <body>
   <div class="paper-grain"></div>
@@ -27,15 +27,16 @@
       <div id="game-panel" class="game-panel hidden">
         <div class="scoreboard"><div id="score-0" class="score-card ember"><div><span class="team-dot"></span><span id="team-name-0">Ember Crew</span></div><b id="points-0">0</b><small>POINTS</small></div><div class="timer"><span class="timer-label">STORM IN</span><b id="timer">5:00</b><div class="timer-track"><i id="timer-bar"></i></div></div><div id="score-1" class="score-card tide"><div><span class="team-dot"></span><span id="team-name-1">Tide Crew</span></div><b id="points-1">0</b><small>POINTS</small></div></div>
         <div id="event-banner" class="event-banner"><span>✦</span> All sites are open</div>
-        <div class="game-columns"><section class="island-panel"><div class="section-heading"><div><div class="eyebrow">PICK A SPOT</div><h2>Scour the island</h2></div><span class="live-pill"><i></i> LIVE</span></div><div id="sites" class="sites"></div><div class="gather-hint">Tap a site to bring materials back to your crew’s shared stash.</div></section>
+        <div class="game-columns"><section class="island-panel"><div class="section-heading"><div><div class="eyebrow">PICK A SPOT</div><h2>Scour the island</h2></div><span class="live-pill"><i></i> LIVE</span></div><div id="trip-status" class="trip-status"></div><div id="sites" class="sites"></div><div class="gather-hint">Choose one resource for this trip. Your haul arrives automatically every 8 seconds.</div><div id="crew-trips" class="crew-trips"></div></section>
           <aside class="right-rail"><section class="order-panel"><div class="eyebrow">SETTLEMENT ORDER</div><div class="order-title"><span>📦</span><h3 id="order-name">Beacon Repair</h3></div><div id="order-costs" class="order-costs"></div><div class="order-footer"><div><b id="order-points">8</b><small>PTS</small></div><button id="deliver-order" class="button dark">Deliver <span>→</span></button></div></section>
-            <section class="stash-panel"><div class="section-heading"><div><div class="eyebrow">YOUR TEAM’S</div><h3>Shared stash</h3></div><span id="my-team-pill" class="my-team-pill">EMBER</span></div><div class="stash-grid"><div><span>🪵</span><small>WOOD</small><b id="stash-wood">0</b></div><div><span>🪨</span><small>STONE</small><b id="stash-stone">0</b></div><div><span>💎</span><small>CRYSTAL</small><b id="stash-crystal">0</b></div></div></section>
+            <section class="stash-panel"><div class="section-heading"><div><div class="eyebrow">YOUR TEAM’S</div><h3>Shared stash</h3></div><span id="my-team-pill" class="my-team-pill">EMBER</span></div><div class="stash-grid"><div><span>🪵</span><small>WOOD</small><b id="stash-wood">0</b></div><div><span>🪨</span><small>STONE</small><b id="stash-stone">0</b></div><div><span>💎</span><small>CRYSTAL</small><b id="stash-crystal">0</b></div></div><div class="powerup-head"><span>YOUR POWERUP KIT</span><small id="boost-count">0 / 2</small></div><div id="powerups" class="powerups"></div></section>
           </aside></div>
       </div>
       <div id="result-panel" class="result-panel hidden"><div class="result-medal">✦</div><div class="eyebrow">THE STORM HAS PASSED</div><h2 id="result-title">Ember Crew wins!</h2><p id="result-copy">The island is saved.</p><div class="result-scores" id="result-scores"></div><button id="rematch" class="button primary">Run it back <span>↗</span></button></div>
       <p id="room-error" class="error room-error"></p>
     </section>
   </main>
+  <div id="puzzle-modal" class="puzzle-modal hidden"><section class="puzzle-card"><button id="puzzle-close" class="puzzle-close" aria-label="Close puzzle">×</button><div class="eyebrow">SITE SIGNAL · MEMORY TEST</div><h2>Repeat the signal</h2><p id="puzzle-instructions">Watch the sequence, then tap the symbols in order.</p><div id="puzzle-sequence" class="puzzle-sequence"></div><div id="puzzle-input" class="puzzle-input hidden"></div><div id="puzzle-message" class="puzzle-message"></div></section></div>
   <div id="toast" class="toast"></div><script src="/app.js"></script>
 </body>
 </html>

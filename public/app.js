@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
-let room = null, playerId = null, stream = null, toastTimer = null;
+let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [];
 
 function setError(id, message = '') { $(id).textContent = message; }
 async function api(path, data = {}, method = 'POST') {
@@ -57,13 +57,33 @@ function renderGame(me) {
   $('timer').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   $('timer-bar').style.width = `${(secs / room.duration) * 100}%`;
   $('event-banner').innerHTML = `<span>✦</span> ${escapeHtml(room.event)}`;
-  $('sites').innerHTML = room.sites.map((site) => `<button class="site-card" data-site="${site.id}" ${!site.active ? 'disabled' : ''}><span class="site-icon">${site.icon}</span><strong>${escapeHtml(site.name)}</strong><small>${site.active ? `Gather ${names[site.resource]}` : 'Resting for now'}</small><span class="gather-cta">${site.active ? `GATHER ${icons[site.resource]} →` : 'SITE RESTING'}</span></button>`).join('');
+  const trip = me.trip;
+  const tripSite = trip && room.sites.find((site) => site.id === trip.siteId);
+  if (trip && tripSite) {
+    const duration = trip.endsAt - trip.startedAt;
+    const elapsed = Math.max(0, Date.now() - trip.startedAt);
+    const remaining = Math.max(0, Math.ceil((trip.endsAt - Date.now()) / 1000));
+    const percent = Math.min(100, elapsed / duration * 100);
+    const nextHaul = Math.max(0, 8 - Math.floor((elapsed % 8000) / 1000));
+    $('trip-status').innerHTML = `<div class="trip-active"><strong>${tripSite.icon} On trip: ${escapeHtml(tripSite.name)}</strong><small>Return in ${remaining}s · ${trip.yields} ${names[tripSite.resource]} gathered</small><div class="trip-progress"><i style="width:${percent}%"></i></div>${trip.puzzleAvailable ? '<button class="puzzle-button" id="try-puzzle">Solve site puzzle · earn a powerup ✦</button>' : `<small>${trip.puzzleSolved ? 'Puzzle solved · powerup earned' : trip.puzzleAttempted ? 'Puzzle attempt used' : `Next automatic haul in ${nextHaul}s`}</small>`}</div>`;
+  } else {
+    $('trip-status').innerHTML = `<div class="trip-ready"><b>${selectedBoostId ? 'Powerup selected for your next trip' : 'Choose a site for your next trip'}</b><span>${selectedBoostId ? 'It will activate when you depart.' : 'Plan your crew’s resource route.'}</span></div>`;
+  }
+  $('sites').innerHTML = room.sites.map((site) => `<button class="site-card" data-site="${site.id}" ${!site.active || Boolean(trip) ? 'disabled' : ''}><span class="site-icon">${site.icon}</span><strong>${escapeHtml(site.name)}</strong><small>${site.active ? `Gather ${names[site.resource]}` : 'Resting for now'}</small><span class="gather-cta">${trip ? 'ON YOUR TRIP' : site.active ? `START 40s TRIP ${icons[site.resource]} →` : 'SITE RESTING'}</span></button>`).join('');
+  $('crew-trips').innerHTML = room.players.filter((player) => player.id !== me.id && player.trip).map((player) => {
+    const site = room.sites.find((entry) => entry.id === player.trip.siteId);
+    return `<span class="crew-trip-chip">${escapeHtml(player.name)} · ${site?.icon || '✦'} ${escapeHtml(site?.name || 'on trip')}</span>`;
+  }).join('');
   for (const key of Object.keys(names)) $(`stash-${key}`).textContent = team.stash[key];
   const ownTeam = team.id === 0 ? 'EMBER' : 'TIDE';
   $('my-team-pill').textContent = ownTeam; $('my-team-pill').className = `my-team-pill ${team.id ? 'tide-pill' : ''}`;
   $('order-name').textContent = room.order.name; $('order-points').textContent = room.order.points;
   $('order-costs').innerHTML = Object.entries(room.order.costs).map(([key, quantity]) => `<span class="cost-pill ${team.stash[key] >= quantity ? 'ready' : ''}">${icons[key]} ${team.stash[key]} / ${quantity} ${names[key]}</span>`).join('');
   const deliver = $('deliver-order'); deliver.disabled = !Object.entries(room.order.costs).every(([key, quantity]) => team.stash[key] >= quantity);
+  const boosts = me.boosts || [];
+  if (selectedBoostId && !boosts.some((boost) => boost.id === selectedBoostId)) selectedBoostId = null;
+  $('boost-count').textContent = `${boosts.length} / 2`;
+  $('powerups').innerHTML = boosts.length ? boosts.map((boost) => `<button class="powerup-card ${selectedBoostId === boost.id ? 'selected' : ''}" data-boost="${boost.id}" ${trip ? 'disabled' : ''}><span>${boost.icon}</span><b>${escapeHtml(boost.name)}${selectedBoostId === boost.id ? ' · READY' : ''}</b><small>${escapeHtml(boost.description)}</small></button>`).join('') : '<p class="powerup-empty">Find a powerup on a trip or solve a site puzzle.</p>';
 }
 function renderResult() {
   const winner = room.winner;
@@ -97,9 +117,48 @@ $('start-game').addEventListener('click', async () => {
 });
 $('sites').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-site]'); if (!button || button.disabled) return;
-  try { await api('gather', { code: room.code, playerId, siteId: button.dataset.site }); }
-  catch (error) { if (error.message !== 'Catch your breath!') toast(error.message); }
+  try { await api('trip', { code: room.code, playerId, siteId: button.dataset.site, boostId: selectedBoostId }); selectedBoostId = null; }
+  catch (error) { toast(error.message); }
 });
+$('powerups').addEventListener('click', (event) => {
+  const card = event.target.closest('[data-boost]'); if (!card || card.disabled) return;
+  selectedBoostId = selectedBoostId === card.dataset.boost ? null : card.dataset.boost;
+  render();
+});
+$('trip-status').addEventListener('click', async (event) => {
+  if (!event.target.closest('#try-puzzle')) return;
+  try {
+    const result = await api(`puzzle?code=${room.code}&playerId=${playerId}`, {}, 'GET');
+    puzzleSequence = result.sequence; puzzleSymbols = result.symbols; puzzleAnswer = [];
+    $('puzzle-modal').classList.remove('hidden'); $('puzzle-input').classList.add('hidden'); $('puzzle-message').textContent = '';
+    $('puzzle-instructions').textContent = 'Memorize this signal…';
+    $('puzzle-sequence').innerHTML = puzzleSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
+    setTimeout(() => {
+      if ($('puzzle-modal').classList.contains('hidden')) return;
+      $('puzzle-sequence').innerHTML = '<span>?</span><span>?</span><span>?</span><span>?</span>';
+      $('puzzle-input').innerHTML = puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('');
+      $('puzzle-input').classList.remove('hidden'); $('puzzle-instructions').textContent = 'Tap the four symbols in the same order.';
+    }, 1800);
+  } catch (error) { toast(error.message); }
+});
+$('puzzle-input').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-symbol]'); if (!button || puzzleAnswer.length >= 4) return;
+  puzzleAnswer.push(Number(button.dataset.symbol));
+  $('puzzle-sequence').innerHTML = puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(4 - puzzleAnswer.length);
+  if (puzzleAnswer.length !== 4) return;
+  try {
+    const result = await api('puzzle', { code: room.code, playerId, sequence: puzzleAnswer });
+    const message = $('puzzle-message');
+    if (result.correct) {
+      message.textContent = result.boost ? `Signal solved! ${result.boost.icon} ${result.boost.name} added to your kit.` : 'Signal solved! Your crew received 2 extra supplies.';
+      setTimeout(() => { $('puzzle-modal').classList.add('hidden'); toast(result.boost ? `${result.boost.name} found!` : 'Puzzle bonus: 2 supplies'); }, 1150);
+    } else {
+      message.textContent = 'Not quite. This trip’s puzzle is spent.'; message.classList.add('wrong');
+      setTimeout(() => $('puzzle-modal').classList.add('hidden'), 1100);
+    }
+  } catch (error) { $('puzzle-message').textContent = error.message; }
+});
+$('puzzle-close').addEventListener('click', () => $('puzzle-modal').classList.add('hidden'));
 $('deliver-order').addEventListener('click', async () => {
   try { await api('order', { code: room.code, playerId }); toast('Order delivered! Points for your crew.'); }
   catch (error) { toast(error.message); }
