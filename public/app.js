@@ -50,8 +50,14 @@ function render() {
   const inGame = ['playing', 'tiebreak'].includes(room.phase);
   $('game-panel').classList.toggle('hidden', !inGame);
   $('result-panel').classList.toggle('hidden', room.phase !== 'finished');
-  $('start-game').disabled = room.players.length < 2 || myPlayer.id !== room.createdBy;
-  $('start-game').textContent = myPlayer.id !== room.createdBy ? 'Waiting for host…' : room.players.length < 2 ? 'Waiting for players…' : 'Launch the round   ↗';
+  const readyCount = room.players.filter((player) => player.ready).length;
+  const allReady = room.players.length >= 2 && readyCount === room.players.length;
+  $('ready-up').disabled = !lobby;
+  $('ready-up').classList.toggle('ready-confirmed', myPlayer.ready);
+  $('ready-up').textContent = myPlayer.ready ? 'Ready ✓ · undo' : 'I’m ready';
+  $('ready-status').textContent = `${readyCount} of ${room.players.length} ready${allReady ? ' · everyone is set' : ''}`;
+  $('start-game').disabled = room.players.length < 2 || myPlayer.id !== room.createdBy || !allReady;
+  $('start-game').textContent = myPlayer.id !== room.createdBy ? 'Waiting for host…' : room.players.length < 2 ? 'Waiting for players…' : allReady ? 'Launch the round   ↗' : `Waiting for everyone (${readyCount}/${room.players.length})`;
   renderTeams();
   if (inTutorial) renderTutorial(myPlayer);
   if (inGame) renderGame(myPlayer);
@@ -83,7 +89,7 @@ function renderTeams() {
     const players = room.players.filter((p) => p.team === team.id);
     const canCustomize = room.phase === 'lobby' && room.players.length > 3 && me?.team === team.id;
     const controls = canCustomize ? `<div class="team-customize"><label>CREW NAME<input data-team-name="${team.id}" maxlength="18" value="${escapeHtml(team.name)}" aria-label="Crew name"></label><label>EMBLEM<select data-team-symbol="${team.id}" aria-label="Crew emblem">${teamSymbols.map(([symbol, label]) => `<option value="${symbol}" ${team.symbol === symbol ? 'selected' : ''}>${symbol} ${label}</option>`).join('')}</select></label></div>` : '';
-    return `<div class="team-box ${team.id ? 'tide' : 'ember'}"><div class="team-box-head"><span><span class="team-emblem">${escapeHtml(team.symbol)}</span> ${escapeHtml(team.name)}</span><span>${players.length} ${players.length === 1 ? 'player' : 'players'}</span></div><div class="team-members">${players.map((p) => `<span class="player-chip">${escapeHtml(p.name)}${p.id === playerId ? ' · you' : ''}</span>`).join('') || '<span class="player-chip">Waiting for crew…</span>'}</div>${controls}</div>`;
+    return `<div class="team-box ${team.id ? 'tide' : 'ember'}"><div class="team-box-head"><span><span class="team-emblem">${escapeHtml(team.symbol)}</span> ${escapeHtml(team.name)}</span><span>${players.length} ${players.length === 1 ? 'player' : 'players'}</span></div><div class="team-members">${players.map((p) => `<span class="player-chip ${p.ready ? 'is-ready' : 'is-not-ready'}"><span>${escapeHtml(p.name)}${p.id === playerId ? ' · you' : ''}</span><small>${p.ready ? 'READY' : 'NOT READY'}</small></span>`).join('') || '<span class="player-chip">Waiting for crew…</span>'}</div>${controls}</div>`;
   }).join('');
 }
 function renderGame(me) {
@@ -186,6 +192,12 @@ $('lobby-teams').addEventListener('change', async (event) => {
 $('start-game').addEventListener('click', async () => {
   try { const result = await api('start', { code: room.code, playerId }); room = result.room; render(); }
   catch (error) { setError('room-error', error.message); }
+});
+$('ready-up').addEventListener('click', async () => {
+  try {
+    const result = await api('ready', { code: room.code, playerId, ready: !room.players.find((player) => player.id === playerId)?.ready });
+    room = result.room; render();
+  } catch (error) { setError('room-error', error.message); }
 });
 $('tutorial-back').addEventListener('click', () => { tutorialStep = Math.max(0, tutorialStep - 1); renderTutorial(room.players.find((player) => player.id === playerId)); });
 $('tutorial-next').addEventListener('click', () => {

@@ -18,6 +18,7 @@ When returning in the same browser, the home screen offers to continue the last 
 
 - Create a room and share its six-character code. Up to eight players join from their own devices.
 - Players are assigned to whichever of the two crews has fewer members.
+- Before launch, each player marks themselves ready. The lobby shows each player’s status, and the host can launch once everyone is ready; readiness resets for a rematch.
 - The host starts once at least two players have joined.
 - New players see a short four-step tutorial before the round. Their teammates wait in a crew briefing, and the round starts when everyone finishes or after one minute.
 - Choose an active island site to begin a 30-second trip. You are committed to gathering that site's resource for the trip, and one supply is added to the shared stash automatically every six seconds.

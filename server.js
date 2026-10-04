@@ -25,7 +25,7 @@ const ORDERS = [
 function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
-    players: [...room.players.values()].map(({ id, name, team, online, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
+    players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
     teams: room.teams, timeLeft: room.phase === 'tutorial' ? Math.max(0, Math.ceil((room.tutorialEndsAt - Date.now()) / 1000)) : ['playing', 'tiebreak'].includes(room.phase) ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
     duration: room.duration, tutorialDuration: room.tutorialDuration, tiebreakDuration: room.tiebreakDuration, round: room.round, winner: room.winner, tiebreakMethod: room.tiebreakMethod,
     sites: room.sites, event: room.event,
@@ -49,7 +49,7 @@ function createRoom(name, isNewPlayer) {
   do { code = crypto.randomBytes(3).toString('hex').toUpperCase(); } while (rooms.has(code));
   const id = crypto.randomUUID();
   const room = {
-    code, phase: 'lobby', createdBy: id, players: new Map([[id, { id, name: cleanName(name), team: 0, online: true, boosts: [], trip: null, newPlayer: Boolean(isNewPlayer), tutorialDone: !isNewPlayer }]]),
+    code, phase: 'lobby', createdBy: id, players: new Map([[id, { id, name: cleanName(name), team: 0, online: true, ready: false, boosts: [], trip: null, newPlayer: Boolean(isNewPlayer), tutorialDone: !isNewPlayer }]]),
     teams: newTeams(), duration: 600, tutorialDuration: 60, tutorialEndsAt: 0, tiebreakDuration: 120, tiebreakHauls: [0, 0], tiebreakMethod: null, round: 1, winner: null,
     sites: [
       { id: 'grove', name: 'Driftwood Grove', resource: 'wood', icon: '🌲', active: true },
@@ -75,7 +75,7 @@ function launchRound(room) {
   room.sites.forEach((site) => { site.active = true; }); room.event = 'All sites are open';
 }
 function start(room) {
-  if (room.phase !== 'lobby' || room.players.size < 2) return false;
+  if (room.phase !== 'lobby' || room.players.size < 2 || [...room.players.values()].some((player) => !player.ready)) return false;
   const newPlayers = [...room.players.values()].filter((player) => player.newPlayer && !player.tutorialDone);
   if (newPlayers.length) { room.phase = 'tutorial'; room.tutorialEndsAt = Date.now() + room.tutorialDuration * 1000; room.event = 'Quick crew briefing · the round starts when everyone is ready'; }
   else launchRound(room);
@@ -157,7 +157,7 @@ function jsonRoute(req, res, pathname, data) {
     const id = crypto.randomUUID();
     const counts = [0, 1].map((team) => [...room.players.values()].filter((p) => p.team === team).length);
     const team = counts[0] <= counts[1] ? 0 : 1;
-    room.players.set(id, { id, name: cleanName(data.name), team, online: true, boosts: [], trip: null, newPlayer: Boolean(data.newPlayer), tutorialDone: !data.newPlayer });
+    room.players.set(id, { id, name: cleanName(data.name), team, online: true, ready: false, boosts: [], trip: null, newPlayer: Boolean(data.newPlayer), tutorialDone: !data.newPlayer });
     emit(room); return send(res, 200, { room: publicRoom(room), playerId: id });
   }
   if (pathname === '/api/stream' && req.method === 'GET') {
@@ -178,6 +178,11 @@ function jsonRoute(req, res, pathname, data) {
     if (room.phase !== 'tutorial') return send(res, 409, { error: 'The tutorial period has ended.' });
     player.tutorialDone = true; player.newPlayer = false;
     if (![...room.players.values()].some((member) => member.newPlayer && !member.tutorialDone)) launchRound(room);
+    emit(room); return send(res, 200, { room: publicRoom(room) });
+  }
+  if (pathname === '/api/ready' && req.method === 'POST') {
+    if (room.phase !== 'lobby') return send(res, 409, { error: 'Readiness can only be changed in the lobby.' });
+    player.ready = Boolean(data.ready);
     emit(room); return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/team-settings' && req.method === 'POST') {
@@ -214,7 +219,9 @@ function jsonRoute(req, res, pathname, data) {
   }
   if (pathname === '/api/start' && req.method === 'POST') {
     if (player.id !== room.createdBy) return send(res, 403, { error: 'Only the host can start the round.' });
-    if (!start(room)) return send(res, 409, { error: 'Add at least one more player before starting.' });
+    if (room.players.size < 2) return send(res, 409, { error: 'Add at least one more player before starting.' });
+    if ([...room.players.values()].some((member) => !member.ready)) return send(res, 409, { error: 'Wait until every player is ready.' });
+    if (!start(room)) return send(res, 409, { error: 'This room cannot start yet.' });
     return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/trip' && req.method === 'POST') {
@@ -274,7 +281,7 @@ function jsonRoute(req, res, pathname, data) {
     if (room.phase !== 'finished') return send(res, 409, { error: 'The round is still underway.' });
     if (player.id !== room.createdBy) return send(res, 403, { error: 'Only the host can start a rematch.' });
     room.teams = newTeams(); room.phase = 'lobby'; room.winner = null; room.tiebreakMethod = null; room.round += 1;
-    for (const member of room.players.values()) { member.trip = null; member.boosts = []; }
+    for (const member of room.players.values()) { member.trip = null; member.boosts = []; member.ready = false; }
     emit(room);
     return send(res, 200, { room: publicRoom(room) });
   }
