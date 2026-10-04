@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 if (localStorage.getItem('resource-scramble-theme') === 'light') document.body.classList.add('light-mode');
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
-let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [];
+let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], pendingSession = null;
 
 function setError(id, message = '') { $(id).textContent = message; }
 async function api(path, data = {}, method = 'POST') {
@@ -74,6 +74,15 @@ function renderGame(me) {
   $('crew-trips').innerHTML = room.players.filter((player) => player.id !== me.id && player.trip).map((player) => {
     const site = room.sites.find((entry) => entry.id === player.trip.siteId);
     return `<span class="crew-trip-chip">${escapeHtml(player.name)} · ${site?.icon || '✦'} ${escapeHtml(site?.name || 'on trip')}</span>`;
+  }).join('');
+  const activeTrips = room.players.filter((player) => player.trip);
+  $('trip-count').textContent = `${activeTrips.length} AT SEA`;
+  $('trip-markers').innerHTML = activeTrips.map((player) => {
+    const elapsed = Math.max(0, Date.now() - player.trip.startedAt);
+    const duration = Math.max(1, player.trip.endsAt - player.trip.startedAt);
+    const site = room.sites.find((entry) => entry.id === player.trip.siteId);
+    const initials = player.name.trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+    return `<span class="trip-marker ${player.team ? 'tide' : 'ember'} ${player.trip.siteId}" style="animation-duration:${duration}ms;animation-delay:-${elapsed}ms" title="${escapeHtml(player.name)} · ${escapeHtml(site?.name || 'on expedition')}">${escapeHtml(initials)}</span>`;
   }).join('');
   for (const key of Object.keys(names)) $(`stash-${key}`).textContent = team.stash[key];
   const ownTeam = team.id === 0 ? 'EMBER' : 'TIDE';
@@ -188,14 +197,35 @@ window.addEventListener('pagehide', () => { if (stream) stream.close(); });
 
 // Rejoin a room after a refresh on this device; the session token is local to this browser.
 (async function restoreSession() {
-  const queryCode = new URLSearchParams(location.search).get('room');
   const saved = localStorage.getItem('resource-scramble-session');
   if (!saved) return;
+  let session;
   try {
-    const session = JSON.parse(saved);
-    if (queryCode && queryCode.toUpperCase() !== session.code) return;
+    session = JSON.parse(saved);
+    pendingSession = session;
     const result = await api(`state?code=${session.code}`, {}, 'GET');
-    if (result.room.players.some((p) => p.id === session.playerId)) enterRoom(result.room, session.playerId);
-    else localStorage.removeItem('resource-scramble-session');
-  } catch { localStorage.removeItem('resource-scramble-session'); }
+    const player = result.room.players.find((p) => p.id === session.playerId);
+    if (!player) { localStorage.removeItem('resource-scramble-session'); return; }
+    $('return-title').textContent = `Continue as ${player.name}`;
+    const phase = { lobby: 'Waiting in the lobby', playing: 'Round in progress', finished: 'Last round finished' }[result.room.phase] || 'Room available';
+    $('return-meta').textContent = `${result.room.code} · ${phase}`;
+    $('return-session').classList.remove('hidden');
+  } catch (error) {
+    if (!session) { localStorage.removeItem('resource-scramble-session'); return; }
+    $('return-session').classList.remove('hidden');
+    $('return-title').textContent = 'Your last room may still be available';
+    $('return-meta').textContent = `${session.code} · last played here`;
+    $('return-error').textContent = 'Could not reach the room right now. Retry Continue, or join/start another room below.';
+  }
 })();
+
+$('continue-game').addEventListener('click', async () => {
+  if (!pendingSession) return;
+  $('continue-game').disabled = true;
+  try {
+    const result = await api(`state?code=${pendingSession.code}`, {}, 'GET');
+    if (!result.room.players.some((player) => player.id === pendingSession.playerId)) throw new Error('This player is no longer in that room.');
+    enterRoom(result.room, pendingSession.playerId);
+  } catch (error) { $('return-error').textContent = error.message; }
+  finally { $('continue-game').disabled = false; }
+});

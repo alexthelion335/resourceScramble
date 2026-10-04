@@ -12,6 +12,8 @@ npm start
 
 Open `http://localhost:3000` to create a room. To play with others on your local network, they can open the host computer’s local network address on port `3000`. For friends outside that network, run this Node server on a publicly reachable host and share its URL. Room state is held in server memory and resets when the server restarts.
 
+When returning in the same browser, the home screen offers to continue the last room or join/create another. The server must still be running with that room in memory for Continue to work.
+
 ## How to play
 
 - Create a room and share its six-character code. Up to eight players join from their own devices.
