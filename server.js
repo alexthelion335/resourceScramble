@@ -70,12 +70,14 @@ async function body(req) {
   try { return JSON.parse(raw || '{}'); } catch { return {}; }
 }
 function auth(room, id) { return room.players.get(id); }
+function teamCounts(room) { return [0, 1].map((teamId) => [...room.players.values()].filter((player) => player.team === teamId).length); }
 function launchRound(room) {
   room.phase = 'playing'; room.endsAt = Date.now() + room.duration * 1000; room.winner = null; room.tiebreakMethod = null; room.tiebreakHauls = [0, 0]; room.nextRotation = Date.now() + 25000;
   room.sites.forEach((site) => { site.active = true; }); room.event = 'All sites are open';
 }
 function start(room) {
-  if (room.phase !== 'lobby' || room.players.size < 2 || [...room.players.values()].some((player) => !player.ready)) return false;
+  const counts = teamCounts(room);
+  if (room.phase !== 'lobby' || room.players.size < 2 || Math.abs(counts[0] - counts[1]) > 1 || [...room.players.values()].some((player) => !player.ready)) return false;
   const newPlayers = [...room.players.values()].filter((player) => player.newPlayer && !player.tutorialDone);
   if (newPlayers.length) { room.phase = 'tutorial'; room.tutorialEndsAt = Date.now() + room.tutorialDuration * 1000; room.event = 'Quick crew briefing · the round starts when everyone is ready'; }
   else launchRound(room);
@@ -185,6 +187,19 @@ function jsonRoute(req, res, pathname, data) {
     player.ready = Boolean(data.ready);
     emit(room); return send(res, 200, { room: publicRoom(room) });
   }
+  if (pathname === '/api/team-select' && req.method === 'POST') {
+    if (room.phase !== 'lobby') return send(res, 409, { error: 'Teams can only be changed in the lobby.' });
+    if (room.players.size < 4) return send(res, 409, { error: 'Team selection unlocks when four players have joined.' });
+    const teamId = Number(data.teamId);
+    if (teamId !== 0 && teamId !== 1) return send(res, 400, { error: 'Choose one of the two crews.' });
+    if (teamId === player.team) return send(res, 200, { room: publicRoom(room) });
+    const counts = teamCounts(room);
+    counts[player.team] -= 1; counts[teamId] += 1;
+    const maxLobbyDifference = room.players.size % 2 === 0 ? 2 : 1;
+    if (Math.abs(counts[0] - counts[1]) > maxLobbyDifference) return send(res, 409, { error: 'That switch would make the crews too uneven. Pick a player from the larger crew instead.' });
+    player.team = teamId; player.ready = false;
+    emit(room); return send(res, 200, { room: publicRoom(room) });
+  }
   if (pathname === '/api/team-settings' && req.method === 'POST') {
     if (room.phase !== 'lobby') return send(res, 409, { error: 'Crew identity can only be changed in the lobby.' });
     if (room.players.size < 4) return send(res, 409, { error: 'Crew identity unlocks when four players have joined.' });
@@ -229,6 +244,8 @@ function jsonRoute(req, res, pathname, data) {
   if (pathname === '/api/start' && req.method === 'POST') {
     if (player.id !== room.createdBy) return send(res, 403, { error: 'Only the host can start the round.' });
     if (room.players.size < 2) return send(res, 409, { error: 'Add at least one more player before starting.' });
+    const counts = teamCounts(room);
+    if (Math.abs(counts[0] - counts[1]) > 1) return send(res, 409, { error: 'Balance the crews before starting. Odd-sized groups may differ by one player.' });
     if ([...room.players.values()].some((member) => !member.ready)) return send(res, 409, { error: 'Wait until every player is ready.' });
     if (!start(room)) return send(res, 409, { error: 'This room cannot start yet.' });
     return send(res, 200, { room: publicRoom(room) });

@@ -4,6 +4,7 @@ const systemDarkMode = window.matchMedia?.('(prefers-color-scheme: dark)');
 if (storedTheme === 'light' || (!storedTheme && !systemDarkMode?.matches)) document.body.classList.add('light-mode');
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
+const siteButtonOrder = ['grove', 'crystal', 'quarry'];
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
 let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, pendingSession = null, tutorialStep = 0;
 const tutorialSteps = [
@@ -53,12 +54,18 @@ function render() {
   $('result-panel').classList.toggle('hidden', room.phase !== 'finished');
   const readyCount = room.players.filter((player) => player.ready).length;
   const allReady = room.players.length >= 2 && readyCount === room.players.length;
+  const teamCounts = [0, 1].map((teamId) => room.players.filter((player) => player.team === teamId).length);
+  const teamsBalanced = Math.abs(teamCounts[0] - teamCounts[1]) <= 1;
+  const idealCounts = [Math.ceil(room.players.length / 2), Math.floor(room.players.length / 2)];
+  const balanceText = room.players.length < 2 ? 'Waiting for another player to form two crews.' : teamsBalanced ? `${room.teams[0].name} ${teamCounts[0]} · ${room.teams[1].name} ${teamCounts[1]} — balanced` : `Crews are ${teamCounts[0]}–${teamCounts[1]}. Move a player to make them ${idealCounts[0]}–${idealCounts[1]} before launch.`;
+  $('team-balance-status').textContent = balanceText;
+  $('team-balance-status').classList.toggle('unbalanced', !teamsBalanced);
   $('ready-up').disabled = !lobby;
   $('ready-up').classList.toggle('ready-confirmed', myPlayer.ready);
   $('ready-up').textContent = myPlayer.ready ? 'Ready ✓ · undo' : 'I’m ready';
   $('ready-status').textContent = `${readyCount} of ${room.players.length} ready${allReady ? ' · everyone is set' : ''}`;
-  $('start-game').disabled = room.players.length < 2 || myPlayer.id !== room.createdBy || !allReady;
-  $('start-game').textContent = myPlayer.id !== room.createdBy ? 'Waiting for host…' : room.players.length < 2 ? 'Waiting for players…' : allReady ? 'Launch the round   ↗' : `Waiting for everyone (${readyCount}/${room.players.length})`;
+  $('start-game').disabled = room.players.length < 2 || myPlayer.id !== room.createdBy || !allReady || !teamsBalanced;
+  $('start-game').textContent = myPlayer.id !== room.createdBy ? 'Waiting for host…' : room.players.length < 2 ? 'Waiting for players…' : !teamsBalanced ? 'Balance teams before launch' : allReady ? 'Launch the round   ↗' : `Waiting for everyone (${readyCount}/${room.players.length})`;
   renderTeams();
   if (inTutorial) renderTutorial(myPlayer);
   if (inGame) renderGame(myPlayer);
@@ -86,11 +93,20 @@ async function completeTutorial() {
 }
 function renderTeams() {
   const me = room.players.find((player) => player.id === playerId);
+  const counts = [0, 1].map((teamId) => room.players.filter((player) => player.team === teamId).length);
+  const maxLobbyDifference = room.players.length % 2 === 0 ? 2 : 1;
+  const canChoose = room.phase === 'lobby' && room.players.length >= 4;
+  const canSwitch = (targetTeam) => {
+    if (!me || targetTeam === me.team) return false;
+    const next = [...counts]; next[me.team] -= 1; next[targetTeam] += 1;
+    return Math.abs(next[0] - next[1]) <= maxLobbyDifference;
+  };
   $('lobby-teams').innerHTML = room.teams.map((team) => {
     const players = room.players.filter((p) => p.team === team.id);
     const canCustomize = room.phase === 'lobby' && room.players.length > 3 && me?.team === team.id;
+    const teamChoice = canChoose ? `<div class="team-choice"><button class="team-select-button ${me?.team === team.id ? 'current' : ''}" data-join-team="${team.id}" ${me?.team === team.id || !canSwitch(team.id) ? 'disabled' : ''}>${me?.team === team.id ? 'Your crew' : canSwitch(team.id) ? `Join ${escapeHtml(team.name)}` : 'Too uneven'}</button></div>` : '';
     const controls = canCustomize ? `<div class="team-customize"><label>CREW NAME<input data-team-name="${team.id}" maxlength="18" value="${escapeHtml(team.name)}" aria-label="Crew name"></label><label>EMBLEM<select data-team-symbol="${team.id}" aria-label="Crew emblem">${teamSymbols.map(([symbol, label]) => `<option value="${symbol}" ${team.symbol === symbol ? 'selected' : ''}>${symbol} ${label}</option>`).join('')}</select></label></div>` : '';
-    return `<div class="team-box ${team.id ? 'tide' : 'ember'}"><div class="team-box-head"><span><span class="team-emblem">${escapeHtml(team.symbol)}</span> ${escapeHtml(team.name)}</span><span>${players.length} ${players.length === 1 ? 'player' : 'players'}</span></div><div class="team-members">${players.map((p) => `<span class="player-chip ${p.ready ? 'is-ready' : 'is-not-ready'}"><span>${escapeHtml(p.name)}${p.id === playerId ? ' · you' : ''}</span><small>${p.ready ? 'READY' : 'NOT READY'}</small></span>`).join('') || '<span class="player-chip">Waiting for crew…</span>'}</div>${controls}</div>`;
+    return `<div class="team-box ${team.id ? 'tide' : 'ember'}"><div class="team-box-head"><span><span class="team-emblem">${escapeHtml(team.symbol)}</span> ${escapeHtml(team.name)}</span><span>${players.length} ${players.length === 1 ? 'player' : 'players'}</span></div><div class="team-members">${players.map((p) => `<span class="player-chip ${p.ready ? 'is-ready' : 'is-not-ready'}"><span>${escapeHtml(p.name)}${p.id === playerId ? ' · you' : ''}</span><small>${p.ready ? 'READY' : 'NOT READY'}</small></span>`).join('') || '<span class="player-chip">Waiting for crew…</span>'}</div>${teamChoice}${controls}</div>`;
   }).join('');
 }
 function renderGame(me) {
@@ -120,7 +136,7 @@ function renderGame(me) {
   } else {
     $('trip-status').innerHTML = `<div class="trip-ready"><b>${selectedBoostId ? 'Powerup selected for your next trip' : 'Choose a site for your next trip'}</b><span>${selectedBoostId ? 'It will activate when you depart.' : 'Plan your crew’s resource route.'}</span></div>`;
   }
-  $('sites').innerHTML = room.sites.map((site) => `<button class="site-card" data-site="${site.id}" ${!site.active || Boolean(trip) ? 'disabled' : ''}><span class="site-icon">${site.icon}</span><strong>${escapeHtml(site.name)}</strong><small>${site.active ? `Gather ${names[site.resource]}` : 'Resting for now'}</small><span class="gather-cta">${trip ? 'ON YOUR TRIP' : site.active ? `START 30s TRIP ${icons[site.resource]} →` : 'SITE RESTING'}</span></button>`).join('');
+  $('sites').innerHTML = [...room.sites].sort((a, b) => siteButtonOrder.indexOf(a.id) - siteButtonOrder.indexOf(b.id)).map((site) => `<button class="site-card" data-site="${site.id}" ${!site.active || Boolean(trip) ? 'disabled' : ''}><span class="site-icon">${site.icon}</span><strong>${escapeHtml(site.name)}</strong><small>${site.active ? `Gather ${names[site.resource]}` : 'Resting for now'}</small><span class="gather-cta">${trip ? 'ON YOUR TRIP' : site.active ? `START 30s TRIP ${icons[site.resource]} →` : 'SITE RESTING'}</span></button>`).join('');
   $('crew-trips').innerHTML = room.players.filter((player) => player.id !== me.id && player.trip).map((player) => {
     const site = room.sites.find((entry) => entry.id === player.trip.siteId);
     return `<span class="crew-trip-chip">${escapeHtml(player.name)} · ${site?.icon || '✦'} ${escapeHtml(site?.name || 'on trip')}</span>`;
@@ -271,6 +287,13 @@ $('lobby-teams').addEventListener('change', async (event) => {
     const result = await api('team-settings', { code: room.code, playerId, teamId, name: nameField ? nameField.value : team.name, symbol: symbolField ? symbolField.value : team.symbol });
     room = result.room; renderTeams();
   } catch (error) { toast(error.message); renderTeams(); }
+});
+$('lobby-teams').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-join-team]'); if (!button || button.disabled) return;
+  try {
+    const result = await api('team-select', { code: room.code, playerId, teamId: Number(button.dataset.joinTeam) });
+    room = result.room; render();
+  } catch (error) { toast(error.message); }
 });
 $('start-game').addEventListener('click', async () => {
   try { const result = await api('start', { code: room.code, playerId }); room = result.room; render(); }
