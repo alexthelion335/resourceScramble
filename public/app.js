@@ -6,7 +6,7 @@ const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 const siteButtonOrder = ['grove', 'crystal', 'quarry'];
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
-let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, pendingSession = null, tutorialStep = 0;
+let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, pendingSession = null, tutorialStep = 0;
 const tutorialSteps = [
   ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs.'],
   ['Your crew gathers together', 'Supplies arrive automatically every six seconds while you are away. Everyone on your team adds to the same stash, even when you are exploring different regions.'],
@@ -27,7 +27,7 @@ function saveSession() {
   if (room && playerId) localStorage.setItem('resource-scramble-session', JSON.stringify({ code: room.code, playerId }));
 }
 function enterRoom(nextRoom, id) {
-  room = nextRoom; playerId = id; saveSession();
+  room = nextRoom; playerId = id; helperOverrideResource = 'auto'; saveSession();
   $('home').classList.add('hidden'); $('room').classList.remove('hidden');
   $('room-code-display').textContent = room.code; $('round-number').textContent = room.round;
   setError('room-error'); render();
@@ -122,6 +122,7 @@ function renderGame(me) {
   $('event-banner').className = `event-banner ${room.phase === 'tiebreak' ? 'tiebreak-banner' : ''}`;
   $('event-banner').innerHTML = `<span>✦</span> ${escapeHtml(room.event)}`;
   const trip = me.trip;
+  renderHelper(team);
   const tripSite = trip && room.sites.find((site) => site.id === trip.siteId);
   if (trip && tripSite) {
     const duration = trip.endsAt - trip.startedAt;
@@ -177,6 +178,32 @@ function renderGame(me) {
     if (!options.length) options.push(`<button disabled>Need ${costLabel}</button>`);
     return `<div class="yield-upgrade"><span>${icons[resource]}</span><b>${names[resource]} site</b><small>+3 per trip</small><div class="upgrade-options">${options.join('')}</div></div>`;
   }).join('');
+}
+function usefulHelperResource(team, exclude = null) {
+  const need = (resource) => Math.max(0, (team.order.costs[resource] || 0) - team.stash[resource]);
+  return Object.keys(names).filter((resource) => resource !== exclude).sort((a, b) => need(b) - need(a) || (team.order.costs[b] || 0) - (team.order.costs[a] || 0) || team.stash[a] - team.stash[b])[0];
+}
+function renderHelper(team) {
+  const panel = $('helper-panel');
+  if (room.helperTeamId !== team.id) { panel.innerHTML = ''; panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  const helperTrip = team.helperTrip;
+  const status = helperTrip ? `Helper gathering ${names[helperTrip.resource]} · ${helperTrip.yields}/3` : 'Helper gathers up to 3 supplies over 30s after a teammate departs.';
+  const members = room.players.filter((player) => player.team === team.id);
+  if (members.length === 1) {
+    const options = ['auto', ...Object.keys(names)].map((resource) => `<option value="${resource}" ${helperOverrideResource === resource ? 'selected' : ''}>${resource === 'auto' ? 'Automatic · best other order resource' : `Override · ${names[resource]}`}</option>`).join('');
+    panel.innerHTML = `<div class="helper-panel-head"><b>🧭 Crew helper</b><span>${escapeHtml(status)}</span></div><label class="helper-control">Helper resource<select id="helper-resource-override">${options}</select></label>`;
+    return;
+  }
+  const modeVotes = team.helperModeVotes || {};
+  const resourceVotes = team.helperResourceVotes || {};
+  const autoVotes = members.filter((member) => modeVotes[member.id] === 'auto').length;
+  const manualVotes = members.filter((member) => modeVotes[member.id] === 'manual').length;
+  const resourceButtons = team.helperMode === 'manual' ? `<div class="helper-resource-votes">${Object.keys(names).map((resource) => {
+    const votes = members.filter((member) => resourceVotes[member.id] === resource).length;
+    return `<button class="helper-vote-button ${resourceVotes[playerId] === resource ? 'selected' : ''}" data-helper-resource="${resource}">${icons[resource]} ${names[resource]} <small>${votes} vote${votes === 1 ? '' : 's'}</small></button>`;
+  }).join('')}</div>` : '';
+  panel.innerHTML = `<div class="helper-panel-head"><b>🧭 Crew helper</b><span>${escapeHtml(status)}</span></div><p>Vote for automatic order-based gathering or manual resource choice. Majority decides; ties stay automatic. Manual resource ties also use the order-based choice.</p><div class="helper-mode-votes"><button class="helper-vote-button ${modeVotes[playerId] === 'auto' ? 'selected' : ''}" data-helper-mode="auto">Auto <small>${autoVotes} vote${autoVotes === 1 ? '' : 's'}</small></button><button class="helper-vote-button ${modeVotes[playerId] === 'manual' ? 'selected' : ''}" data-helper-mode="manual">Choose resource <small>${manualVotes} vote${manualVotes === 1 ? '' : 's'}</small></button></div>${resourceButtons}`;
 }
 function renderResult() {
   const winner = room.winner;
@@ -313,7 +340,21 @@ $('tutorial-next').addEventListener('click', () => {
 $('tutorial-skip').addEventListener('click', completeTutorial);
 $('sites').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-site]'); if (!button || button.disabled) return;
-  try { await api('trip', { code: room.code, playerId, siteId: button.dataset.site, boostId: selectedBoostId }); selectedBoostId = null; }
+  try { const result = await api('trip', { code: room.code, playerId, siteId: button.dataset.site, boostId: selectedBoostId, helperResource: helperOverrideResource === 'auto' ? null : helperOverrideResource }); room = result.room; selectedBoostId = null; render(); }
+  catch (error) { toast(error.message); }
+});
+$('helper-panel').addEventListener('change', (event) => {
+  if (!event.target.matches('#helper-resource-override')) return;
+  helperOverrideResource = event.target.value;
+});
+$('helper-panel').addEventListener('click', async (event) => {
+  const modeButton = event.target.closest('[data-helper-mode]');
+  const resourceButton = event.target.closest('[data-helper-resource]');
+  if (!modeButton && !resourceButton) return;
+  const team = room.teams[room.players.find((player) => player.id === playerId).team];
+  const mode = modeButton?.dataset.helperMode || 'manual';
+  const resource = resourceButton?.dataset.helperResource || team.helperResourceVotes?.[playerId] || usefulHelperResource(team);
+  try { const result = await api('helper-vote', { code: room.code, playerId, mode, resource }); room = result.room; render(); }
   catch (error) { toast(error.message); }
 });
 $('powerups').addEventListener('click', (event) => {

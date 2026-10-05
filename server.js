@@ -26,7 +26,8 @@ function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
     players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, upgradeBonus: trip.upgradeBonus, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved, challengeAttempted: trip.challengeAttempted } : null, boosts: boosts || [] })),
-    teams: room.teams, timeLeft: room.phase === 'tutorial' ? Math.max(0, Math.ceil((room.tutorialEndsAt - Date.now()) / 1000)) : ['playing', 'tiebreak'].includes(room.phase) ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
+    teams: room.teams.map((team) => ({ ...team, helperMode: helperModeFor(room, team) })), helperTeamId: helperTeamId(room),
+    timeLeft: room.phase === 'tutorial' ? Math.max(0, Math.ceil((room.tutorialEndsAt - Date.now()) / 1000)) : ['playing', 'tiebreak'].includes(room.phase) ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
     duration: room.duration, tutorialDuration: room.tutorialDuration, tiebreakDuration: room.tiebreakDuration, round: room.round, winner: room.winner, tiebreakMethod: room.tiebreakMethod,
     sites: room.sites, event: room.event,
   };
@@ -38,7 +39,31 @@ function emit(room) {
 function newTeams() {
   const orders = [newOrder(), newOrder()];
   while (orders[0].name === orders[1].name) orders[1] = newOrder();
-  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id], upgrades: { wood: false, stone: false, crystal: false }, upgradeTokens: 0, surveySolved: false }));
+  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id], upgrades: { wood: false, stone: false, crystal: false }, upgradeTokens: 0, surveySolved: false, helperMode: 'auto', helperModeVotes: {}, helperResourceVotes: {}, helperTrip: null }));
+}
+function resourceNeed(team, resource) { return Math.max(0, (team.order.costs[resource] || 0) - team.stash[resource]); }
+function usefulResource(team, exclude = null) {
+  return RESOURCES.filter((resource) => resource !== exclude).sort((a, b) => resourceNeed(team, b) - resourceNeed(team, a) || (team.order.costs[b] || 0) - (team.order.costs[a] || 0) || team.stash[a] - team.stash[b])[0] || RESOURCES.find((resource) => resource !== exclude);
+}
+function helperTeamId(room) {
+  const counts = teamCounts(room);
+  return counts[0] === counts[1] ? null : counts[0] < counts[1] ? 0 : 1;
+}
+function helperModeFor(room, team) {
+  const members = [...room.players.values()].filter((player) => player.team === team.id);
+  const manualVotes = members.filter((player) => team.helperModeVotes[player.id] === 'manual').length;
+  return manualVotes > members.length / 2 ? 'manual' : 'auto';
+}
+function helperResourceFor(room, team, exclude = null) {
+  if (helperModeFor(room, team) === 'auto') return usefulResource(team, exclude);
+  const members = [...room.players.values()].filter((player) => player.team === team.id);
+  const counts = Object.fromEntries(RESOURCES.map((resource) => [resource, members.filter((player) => team.helperResourceVotes[player.id] === resource).length]));
+  const max = Math.max(0, ...Object.values(counts));
+  if (max > members.length / 2) {
+    const winner = RESOURCES.find((resource) => counts[resource] === max);
+    if (winner) return winner;
+  }
+  return usefulResource(team, exclude);
 }
 function newOrder() {
   const order = ORDERS[Math.floor(Math.random() * ORDERS.length)];
@@ -106,6 +131,15 @@ function start(room) {
       }
       if (Date.now() >= trip.endsAt || left <= 0) player.trip = null;
     }
+    for (const team of room.teams) {
+      const helperTrip = team.helperTrip;
+      if (!helperTrip) continue;
+      while (helperTrip.nextYieldAt <= Date.now() && helperTrip.nextYieldAt <= helperTrip.endsAt && helperTrip.yields < 3) {
+        team.stash[helperTrip.resource] += 1; helperTrip.yields += 1; helperTrip.nextYieldAt += 10000;
+        if (room.phase === 'tiebreak') room.tiebreakHauls[team.id] += 1;
+      }
+      if (Date.now() >= helperTrip.endsAt || helperTrip.yields >= 3) team.helperTrip = null;
+    }
     if (room.phase === 'playing' && left > 0 && Date.now() >= room.nextRotation) {
       room.sites.forEach((site) => { site.active = true; });
       const resting = room.sites[Math.floor(Math.random() * room.sites.length)];
@@ -123,7 +157,10 @@ function start(room) {
         room.phase = 'tiebreak'; room.endsAt = Date.now() + room.tiebreakDuration * 1000; room.tiebreakHauls = [0, 0]; room.nextRotation = Date.now() + 10000;
         room.sites.forEach((site) => { site.active = true; });
         room.event = 'SUDDEN DEATH · Deliver the Golden Beacon first to win';
-        for (const team of room.teams) team.order = { name: 'Golden Beacon', costs: { wood: 3, stone: 3, crystal: 3 }, points: 0, id: crypto.randomUUID() };
+        for (const team of room.teams) {
+          team.order = { name: 'Golden Beacon', costs: { wood: 3, stone: 3, crystal: 3 }, points: 0, id: crypto.randomUUID() };
+          team.helperTrip = null;
+        }
         for (const player of room.players.values()) player.trip = null;
       } else {
         room.phase = 'finished'; clearInterval(room.timer); room.winner = a.score > b.score ? 0 : 1;
@@ -213,6 +250,16 @@ function jsonRoute(req, res, pathname, data) {
     if (TEAM_SYMBOLS.includes(data.symbol)) team.symbol = data.symbol;
     emit(room); return send(res, 200, { room: publicRoom(room) });
   }
+  if (pathname === '/api/helper-vote' && req.method === 'POST') {
+    if (!['playing', 'tiebreak'].includes(room.phase)) return send(res, 409, { error: 'The crew helper is only available during a round.' });
+    const helperId = helperTeamId(room);
+    if (helperId !== player.team) return send(res, 403, { error: 'Only the crew with fewer players can direct the helper.' });
+    const team = room.teams[player.team];
+    if (data.mode !== 'auto' && data.mode !== 'manual') return send(res, 400, { error: 'Choose automatic or manual helper control.' });
+    team.helperModeVotes[player.id] = data.mode;
+    if (RESOURCES.includes(data.resource)) team.helperResourceVotes[player.id] = data.resource;
+    emit(room); return send(res, 200, { room: publicRoom(room) });
+  }
   if (pathname === '/api/puzzle' && req.method === 'GET') {
     if (!['playing', 'tiebreak'].includes(room.phase) || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
     const symbols = ['🌙', '☀️', '⭐', '⚡'];
@@ -282,6 +329,14 @@ function jsonRoute(req, res, pathname, data) {
     const tripMs = boost?.id === 'swift_boots' ? 20000 : 30000;
     const yieldIntervalMs = boost?.id === 'swift_boots' ? 4000 : 6000;
     player.trip = { siteId: site.id, resource: site.resource, startedAt: now, endsAt: now + tripMs, nextYieldAt: now + yieldIntervalMs, yieldIntervalMs, yields: 0, puzzleSolved: false, puzzleAttempted: false, puzzleSubmitted: false, challengeAttempted: false, challengeSubmitted: false, upgradeBonus: 0, boostId: boost?.id || null };
+    if (helperTeamId(room) === player.team && !room.teams[player.team].helperTrip) {
+      const team = room.teams[player.team];
+      const teamSize = teamCounts(room)[player.team];
+      const helperResource = teamSize === 1
+        ? (RESOURCES.includes(data.helperResource) ? data.helperResource : usefulResource(team, site.resource))
+        : helperResourceFor(room, team, site.resource);
+      team.helperTrip = { resource: helperResource, startedAt: now, endsAt: now + 30000, nextYieldAt: now + 10000, yields: 0 };
+    }
     if (room.teams[player.team].upgrades[site.resource]) {
       player.trip.upgradeBonus = 3;
       room.teams[player.team].stash[site.resource] += 3;
