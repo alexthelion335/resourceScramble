@@ -135,8 +135,12 @@ function start(room) {
       const helperTrip = team.helperTrip;
       if (!helperTrip) continue;
       while (helperTrip.nextYieldAt <= Date.now() && helperTrip.nextYieldAt <= helperTrip.endsAt && helperTrip.yields < 3) {
-        team.stash[helperTrip.resource] += 1; helperTrip.yields += 1; helperTrip.nextYieldAt += 10000;
-        if (room.phase === 'tiebreak') room.tiebreakHauls[team.id] += 1;
+        const site = room.sites.find((entry) => entry.resource === helperTrip.resource);
+        if (site?.active) {
+          team.stash[helperTrip.resource] += 1; helperTrip.yields += 1;
+          if (room.phase === 'tiebreak') room.tiebreakHauls[team.id] += 1;
+        }
+        helperTrip.nextYieldAt += 10000;
       }
       if (Date.now() >= helperTrip.endsAt || helperTrip.yields >= 3) team.helperTrip = null;
     }
