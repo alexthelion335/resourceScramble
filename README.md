@@ -17,7 +17,7 @@ When returning in the same browser, the home screen offers to continue the last 
 ## How to play
 
 - Create a room and share its six-character code. Up to eight players join from their own devices.
-- Players are assigned to the smaller crew as they join. Once four players have joined, players can choose a crew; even-sized lobbies may briefly be off balance while players arrange themselves.
+- Players are assigned to the smaller crew as they join. Once three players have joined, players can choose a crew and customize their own crew’s name and emblem; even-sized lobbies may briefly be off balance while players arrange themselves.
 - Before launch, each player marks themselves ready. The lobby shows each player’s status, and the host can launch once everyone is ready; readiness resets for a rematch.
 - The host can start with at least two players when the crews are balanced: equal sizes for even lobbies, or a one-player difference for odd lobbies. The host also waits for every player to mark ready.
 - New players see a short four-step tutorial before the round. Their teammates wait in a crew briefing, and the round starts when everyone finishes or after one minute.

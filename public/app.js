@@ -95,7 +95,7 @@ function renderTeams() {
   const me = room.players.find((player) => player.id === playerId);
   const counts = [0, 1].map((teamId) => room.players.filter((player) => player.team === teamId).length);
   const maxLobbyDifference = room.players.length % 2 === 0 ? 2 : 1;
-  const canChoose = room.phase === 'lobby' && room.players.length >= 4;
+  const canChoose = room.phase === 'lobby' && room.players.length >= 3;
   const canSwitch = (targetTeam) => {
     if (!me || targetTeam === me.team) return false;
     const next = [...counts]; next[me.team] -= 1; next[targetTeam] += 1;
@@ -103,7 +103,7 @@ function renderTeams() {
   };
   $('lobby-teams').innerHTML = room.teams.map((team) => {
     const players = room.players.filter((p) => p.team === team.id);
-    const canCustomize = room.phase === 'lobby' && room.players.length > 3 && me?.team === team.id;
+    const canCustomize = room.phase === 'lobby' && room.players.length >= 3 && me?.team === team.id;
     const teamChoice = canChoose ? `<div class="team-choice"><button class="team-select-button ${me?.team === team.id ? 'current' : ''}" data-join-team="${team.id}" ${me?.team === team.id || !canSwitch(team.id) ? 'disabled' : ''}>${me?.team === team.id ? 'Your crew' : canSwitch(team.id) ? `Join ${escapeHtml(team.name)}` : 'Too uneven'}</button></div>` : '';
     const controls = canCustomize ? `<div class="team-customize"><label>CREW NAME<input data-team-name="${team.id}" maxlength="18" value="${escapeHtml(team.name)}" aria-label="Crew name"></label><label>EMBLEM<select data-team-symbol="${team.id}" aria-label="Crew emblem">${teamSymbols.map(([symbol, label]) => `<option value="${symbol}" ${team.symbol === symbol ? 'selected' : ''}>${symbol} ${label}</option>`).join('')}</select></label></div>` : '';
     return `<div class="team-box ${team.id ? 'tide' : 'ember'}"><div class="team-box-head"><span><span class="team-emblem">${escapeHtml(team.symbol)}</span> ${escapeHtml(team.name)}</span><span>${players.length} ${players.length === 1 ? 'player' : 'players'}</span></div><div class="team-members">${players.map((p) => `<span class="player-chip ${p.ready ? 'is-ready' : 'is-not-ready'}"><span>${escapeHtml(p.name)}${p.id === playerId ? ' · you' : ''}</span><small>${p.ready ? 'READY' : 'NOT READY'}</small></span>`).join('') || '<span class="player-chip">Waiting for crew…</span>'}</div>${teamChoice}${controls}</div>`;

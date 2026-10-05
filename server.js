@@ -189,7 +189,7 @@ function jsonRoute(req, res, pathname, data) {
   }
   if (pathname === '/api/team-select' && req.method === 'POST') {
     if (room.phase !== 'lobby') return send(res, 409, { error: 'Teams can only be changed in the lobby.' });
-    if (room.players.size < 4) return send(res, 409, { error: 'Team selection unlocks when four players have joined.' });
+    if (room.players.size < 3) return send(res, 409, { error: 'Team selection unlocks when three players have joined.' });
     const teamId = Number(data.teamId);
     if (teamId !== 0 && teamId !== 1) return send(res, 400, { error: 'Choose one of the two crews.' });
     if (teamId === player.team) return send(res, 200, { room: publicRoom(room) });
@@ -202,7 +202,7 @@ function jsonRoute(req, res, pathname, data) {
   }
   if (pathname === '/api/team-settings' && req.method === 'POST') {
     if (room.phase !== 'lobby') return send(res, 409, { error: 'Crew identity can only be changed in the lobby.' });
-    if (room.players.size < 4) return send(res, 409, { error: 'Crew identity unlocks when four players have joined.' });
+    if (room.players.size < 3) return send(res, 409, { error: 'Crew identity unlocks when three players have joined.' });
     const team = room.teams[player.team];
     if (data.teamId !== player.team) return send(res, 403, { error: 'You can only customize your own crew.' });
     const name = String(data.name || '').trim().slice(0, 18);
