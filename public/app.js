@@ -5,13 +5,14 @@ if (storedTheme === 'light' || (!storedTheme && !systemDarkMode?.matches)) docum
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
-let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, pendingSession = null, tutorialStep = 0;
+let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, pendingSession = null, tutorialStep = 0;
 const tutorialSteps = [
   ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs.'],
   ['Your crew gathers together', 'Supplies arrive automatically every six seconds while you are away. Everyone on your team adds to the same stash, even when you are exploring different regions.'],
-  ['Solve site signals for a boost', 'Once during a trip, try the memory puzzle for a powerup. You can also discover powerups while gathering; choose one before your next trip.'],
-  ['Deliver your crew’s orders', 'Use the shared stash to complete your crew’s next settlement order. Your crew has its own order progression, and the highest score after ten minutes wins. A tie starts Golden Beacon sudden death.']
+  ['Solve site signals for a boost', 'Once during a trip, try the quick site puzzle for a powerup. You can also discover powerups while gathering; choose one before your next trip.'],
+  ['Deliver your crew’s orders', 'Use the shared stash to complete your crew’s next settlement order. A Survey Challenge can earn a token for a site upgrade. Your crew’s score after ten minutes wins; a tie starts Golden Beacon sudden death.']
 ];
+const upgradeCosts = { wood: { wood: 8, stone: 4, crystal: 4 }, stone: { wood: 4, stone: 8, crystal: 4 }, crystal: { wood: 4, stone: 4, crystal: 8 } };
 
 function setError(id, message = '') { $(id).textContent = message; }
 async function api(path, data = {}, method = 'POST') {
@@ -113,7 +114,9 @@ function renderGame(me) {
     const percent = Math.min(100, elapsed / duration * 100);
     const interval = trip.yieldIntervalMs || 6000;
     const nextHaul = Math.max(0, Math.ceil((interval - (elapsed % interval)) / 1000));
-    $('trip-status').innerHTML = `<div class="trip-active"><strong>${tripSite.icon} On trip: ${escapeHtml(tripSite.name)}</strong><small>Return in ${remaining}s · ${trip.yields} ${names[tripSite.resource]} gathered</small><div class="trip-progress"><i style="width:${percent}%"></i></div>${trip.puzzleAvailable ? '<button class="puzzle-button" id="try-puzzle">Solve site puzzle · earn a powerup ✦</button>' : `<small>${trip.puzzleSolved ? 'Puzzle solved · powerup earned' : trip.puzzleAttempted ? 'Puzzle attempt used' : `Next automatic haul in ${nextHaul}s`}</small>`}</div>`;
+    const puzzleAction = trip.puzzleAvailable ? '<button class="puzzle-button" id="try-puzzle">Solve site puzzle · earn a powerup ✦</button>' : `<small>${trip.puzzleSolved ? 'Puzzle solved · powerup earned' : trip.puzzleAttempted ? 'Puzzle attempt used' : `Next automatic haul in ${nextHaul}s`}</small>`;
+    const challengeAction = !team.surveyAttempted ? '<button class="puzzle-button challenge-button" id="try-challenge">Survey challenge · win a yield token ✦</button>' : team.upgradeTokens ? '<small class="survey-status">Survey token ready · spend it on a site upgrade</small>' : '<small class="survey-status">Survey challenge used this round</small>';
+    $('trip-status').innerHTML = `<div class="trip-active"><strong>${tripSite.icon} On trip: ${escapeHtml(tripSite.name)}</strong><small>Return in ${remaining}s · ${trip.yields} ${names[tripSite.resource]} gathered${trip.upgradeBonus ? ` · +${trip.upgradeBonus} site bonus` : ''}</small><div class="trip-progress"><i style="width:${percent}%"></i></div>${puzzleAction}${challengeAction}</div>`;
   } else {
     $('trip-status').innerHTML = `<div class="trip-ready"><b>${selectedBoostId ? 'Powerup selected for your next trip' : 'Choose a site for your next trip'}</b><span>${selectedBoostId ? 'It will activate when you depart.' : 'Plan your crew’s resource route.'}</span></div>`;
   }
@@ -144,6 +147,20 @@ function renderGame(me) {
   if (selectedBoostId && !boosts.some((boost) => boost.instanceId === selectedBoostId)) selectedBoostId = null;
   $('boost-count').textContent = `${boosts.length} / 2`;
   $('powerups').innerHTML = boosts.length ? boosts.map((boost) => `<button class="powerup-card ${selectedBoostId === boost.instanceId ? 'selected' : ''}" data-boost="${boost.instanceId}" ${trip ? 'disabled' : ''}><span>${boost.icon}</span><b>${escapeHtml(boost.name)}${selectedBoostId === boost.instanceId ? ' · READY' : ''}</b><small>${escapeHtml(boost.description)}</small></button>`).join('') : '<p class="powerup-empty">Find a powerup on a trip or solve a site puzzle.</p>';
+  $('upgrade-token-count').textContent = `${team.upgradeTokens} survey ${team.upgradeTokens === 1 ? 'token' : 'tokens'}`;
+  $('yield-upgrades').innerHTML = Object.keys(names).map((resource) => {
+    const costs = upgradeCosts[resource];
+    const costLabel = Object.entries(costs).map(([key, amount]) => `${icons[key]} ${amount}`).join(' ');
+    if (team.upgrades[resource]) return `<div class="yield-upgrade upgraded"><span>${icons[resource]}</span><b>${names[resource]} site</b><small>+3 per trip · upgraded</small></div>`;
+    const canAfford = Object.entries(costs).every(([key, amount]) => team.stash[key] >= amount);
+    const token = team.upgradeTokens > 0;
+    const options = [
+      ...(canAfford ? [`<button aria-label="Upgrade ${names[resource]} site with supplies" data-upgrade="${resource}" data-use-token="false">Buy · ${costLabel}</button>`] : []),
+      ...(token ? [`<button aria-label="Upgrade ${names[resource]} site with a survey token" data-upgrade="${resource}" data-use-token="true">Use token</button>`] : []),
+    ];
+    if (!options.length) options.push(`<button disabled>Need ${costLabel}</button>`);
+    return `<div class="yield-upgrade"><span>${icons[resource]}</span><b>${names[resource]} site</b><small>+3 per trip</small><div class="upgrade-options">${options.join('')}</div></div>`;
+  }).join('');
 }
 function renderResult() {
   const winner = room.winner;
@@ -160,6 +177,72 @@ function updateThemeButton() {
   $('theme-toggle').textContent = light ? '☾' : '☼';
   $('theme-toggle').setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
   $('theme-toggle').title = light ? 'Switch to dark mode' : 'Switch to light mode';
+}
+function closePuzzle() {
+  clearInterval(puzzleCountdownTimer); puzzleCountdownTimer = null;
+  $('puzzle-modal').classList.add('hidden');
+  $('puzzle-countdown').classList.add('hidden');
+}
+async function openPuzzle(mode = '') {
+  try {
+    const query = `puzzle?code=${room.code}&playerId=${playerId}${mode ? `&type=${mode}` : ''}`;
+    const result = await api(query, {}, 'GET');
+    puzzleSequence = result.sequence || []; puzzleSymbols = result.symbols; puzzleAnswer = []; puzzleType = result.type; countSequence = result.countSequence || []; countTarget = result.countTarget;
+    $('puzzle-modal').classList.remove('hidden'); $('puzzle-input').classList.add('hidden'); $('puzzle-message').textContent = ''; $('puzzle-message').classList.remove('wrong');
+    const sequence = puzzleType === 'count' ? countSequence : puzzleSequence;
+    const display = $('puzzle-sequence');
+    display.classList.remove('count-grid', 'count-answer', 'multi-grid', 'multi-answer');
+    if (puzzleType === 'count') {
+      $('puzzle-title').textContent = 'Count the signal';
+      $('puzzle-instructions').textContent = `Memorize the display. How many ${puzzleSymbols[countTarget]} symbols did you see?`;
+      display.classList.add('count-grid');
+    } else if (puzzleType === 'challenge') {
+      $('puzzle-title').textContent = 'Survey challenge';
+      $('puzzle-instructions').textContent = 'Memorize all six symbols, then repeat them in order.';
+      display.classList.add('multi-grid');
+    } else {
+      $('puzzle-title').textContent = 'Repeat the signal';
+      $('puzzle-instructions').textContent = 'Memorize the four symbols, then repeat them in order.';
+    }
+    display.innerHTML = sequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
+    const counter = $('puzzle-countdown'); counter.textContent = '3'; counter.classList.remove('hidden');
+    let remaining = 3;
+    clearInterval(puzzleCountdownTimer);
+    puzzleCountdownTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) { counter.textContent = String(remaining); return; }
+      clearInterval(puzzleCountdownTimer); puzzleCountdownTimer = null; counter.classList.add('hidden');
+      revealPuzzleInput();
+    }, 1000);
+  } catch (error) { toast(error.message); }
+}
+function revealPuzzleInput() {
+  const display = $('puzzle-sequence');
+  if (puzzleType === 'count') {
+    display.innerHTML = '<span>?</span>'.repeat(countSequence.length);
+    $('puzzle-instructions').textContent = `How many ${puzzleSymbols[countTarget]} symbols were in the display?`;
+    $('puzzle-input').innerHTML = '<form id="count-puzzle-form" class="count-puzzle-form"><label for="count-puzzle-answer">Enter the number you counted</label><div><input id="count-puzzle-answer" type="number" min="0" max="9" step="1" inputmode="numeric" required><button class="button primary" type="submit">Check</button></div></form>';
+  } else {
+    display.innerHTML = '<span>?</span>'.repeat(puzzleSequence.length);
+    const required = puzzleType === 'challenge' ? 6 : 4;
+    $('puzzle-instructions').textContent = `Tap the ${required} symbols in the same order.`;
+    $('puzzle-input').innerHTML = puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('');
+  }
+  $('puzzle-input').classList.remove('hidden');
+}
+async function submitPuzzleAnswer(answer) {
+  try {
+    const result = await api('puzzle', { code: room.code, playerId, sequence: answer, type: puzzleType });
+    const message = $('puzzle-message');
+    if (result.correct) {
+      const messageText = result.tokenEarned ? 'Survey solved! Your team earned a site-upgrade token.' : result.boost ? `Signal solved! ${result.boost.icon} ${result.boost.name} added to your kit.` : 'Signal solved! Your crew received 2 extra supplies.';
+      message.textContent = messageText;
+      setTimeout(() => { closePuzzle(); toast(result.tokenEarned ? 'Site-upgrade token earned!' : result.boost ? `${result.boost.name} found!` : 'Puzzle bonus: 2 supplies'); }, 1150);
+    } else {
+      message.textContent = puzzleType === 'challenge' ? 'Survey missed. Your team’s one challenge is spent.' : 'Not quite. This trip’s puzzle is spent.';
+      message.classList.add('wrong'); setTimeout(closePuzzle, 1100);
+    }
+  } catch (error) { $('puzzle-message').textContent = error.message; }
 }
 
 $('create-room').addEventListener('click', async () => {
@@ -216,61 +299,42 @@ $('powerups').addEventListener('click', (event) => {
   render();
 });
 $('trip-status').addEventListener('click', async (event) => {
-  if (!event.target.closest('#try-puzzle')) return;
-  try {
-    const result = await api(`puzzle?code=${room.code}&playerId=${playerId}`, {}, 'GET');
-    puzzleSequence = result.sequence || []; puzzleSymbols = result.symbols; puzzleAnswer = []; puzzleType = result.type; countSequence = result.countSequence || []; countTarget = result.countTarget;
-    $('puzzle-modal').classList.remove('hidden'); $('puzzle-input').classList.add('hidden'); $('puzzle-message').textContent = ''; $('puzzle-message').classList.remove('wrong');
-    if (puzzleType === 'count') {
-      $('puzzle-title').textContent = 'Count the signal';
-      $('puzzle-instructions').textContent = `Memorize the display. How many ${puzzleSymbols[countTarget]} symbols did you see?`;
-      $('puzzle-sequence').classList.add('count-grid');
-      $('puzzle-sequence').classList.remove('count-answer');
-      $('puzzle-sequence').innerHTML = countSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
-    } else {
-      $('puzzle-title').textContent = 'Repeat the signal';
-      $('puzzle-instructions').textContent = 'Memorize this signal…';
-      $('puzzle-sequence').classList.remove('count-grid');
-      $('puzzle-sequence').innerHTML = puzzleSequence.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('');
-    }
-    setTimeout(() => {
-      if ($('puzzle-modal').classList.contains('hidden')) return;
-      if (puzzleType === 'count') {
-        $('puzzle-sequence').innerHTML = '<span>?</span>'.repeat(countSequence.length);
-        const count = countSequence.filter((symbol) => symbol === countTarget).length;
-        $('puzzle-input').innerHTML = Array.from({ length: 4 }, (_, index) => `<button class="puzzle-symbol puzzle-choice" data-symbol="${count - 1 + index}">${count - 1 + index}</button>`).join('');
-        $('puzzle-instructions').textContent = `How many ${puzzleSymbols[countTarget]} symbols were in the display?`;
-      } else {
-        $('puzzle-sequence').innerHTML = '<span>?</span><span>?</span><span>?</span><span>?</span>';
-        $('puzzle-input').innerHTML = puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('');
-        $('puzzle-instructions').textContent = 'Tap the four symbols in the same order.';
-      }
-      $('puzzle-input').classList.remove('hidden');
-    }, 2500);
-  } catch (error) { toast(error.message); }
+  if (event.target.closest('#try-puzzle')) openPuzzle();
+  else if (event.target.closest('#try-challenge')) openPuzzle('challenge');
+});
+$('yield-upgrades').addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-upgrade]'); if (!button || button.disabled) return;
+  const resource = button.dataset.upgrade;
+  const me = room.players.find((player) => player.id === playerId);
+  const useToken = button.dataset.useToken === 'true';
+  try { const result = await api('upgrade', { code: room.code, playerId, resource, useToken }); room = result.room; render(); toast(`${names[resource]} site upgraded · +3 per trip`); }
+  catch (error) { toast(error.message); }
 });
 $('puzzle-input').addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-symbol]'); const requiredAnswers = puzzleType === 'count' ? 1 : 4;
+  const button = event.target.closest('[data-symbol]'); const requiredAnswers = puzzleType === 'count' ? 1 : puzzleType === 'challenge' ? 6 : 4;
   if (!button || puzzleAnswer.length >= requiredAnswers) return;
   puzzleAnswer.push(Number(button.dataset.symbol));
   $('puzzle-sequence').innerHTML = puzzleType === 'count'
     ? `<span>${puzzleAnswer[0]}</span>`
-    : puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(4 - puzzleAnswer.length);
+    : puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(requiredAnswers - puzzleAnswer.length);
   if (puzzleType === 'count') $('puzzle-sequence').classList.add('count-answer');
+  if (puzzleType === 'challenge') $('puzzle-sequence').classList.add('multi-answer');
   if (puzzleAnswer.length !== requiredAnswers) return;
-  try {
-    const result = await api('puzzle', { code: room.code, playerId, sequence: puzzleAnswer });
-    const message = $('puzzle-message');
-    if (result.correct) {
-      message.textContent = result.boost ? `Signal solved! ${result.boost.icon} ${result.boost.name} added to your kit.` : 'Signal solved! Your crew received 2 extra supplies.';
-      setTimeout(() => { $('puzzle-modal').classList.add('hidden'); toast(result.boost ? `${result.boost.name} found!` : 'Puzzle bonus: 2 supplies'); }, 1150);
-    } else {
-      message.textContent = 'Not quite. This trip’s puzzle is spent.'; message.classList.add('wrong');
-      setTimeout(() => $('puzzle-modal').classList.add('hidden'), 1100);
-    }
-  } catch (error) { $('puzzle-message').textContent = error.message; }
+  submitPuzzleAnswer(puzzleAnswer);
 });
-$('puzzle-close').addEventListener('click', () => $('puzzle-modal').classList.add('hidden'));
+$('puzzle-input').addEventListener('submit', (event) => {
+  if (!event.target.matches('#count-puzzle-form')) return;
+  event.preventDefault();
+  if (puzzleAnswer.length) return;
+  const input = $('count-puzzle-answer');
+  if (!input.reportValidity()) return;
+  const answer = Number(input.value);
+  puzzleAnswer = [answer];
+  $('puzzle-sequence').innerHTML = `<span>${answer}</span>`;
+  $('puzzle-sequence').classList.add('count-answer');
+  submitPuzzleAnswer(puzzleAnswer);
+});
+$('puzzle-close').addEventListener('click', closePuzzle);
 $('deliver-order').addEventListener('click', async () => {
   const wasTiebreak = room.phase === 'tiebreak';
   try { await api('order', { code: room.code, playerId }); toast(wasTiebreak ? 'Golden Beacon delivered!' : 'Order delivered! Points for your crew.'); }

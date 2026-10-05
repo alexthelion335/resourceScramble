@@ -22,7 +22,8 @@ When returning in the same browser, the home screen offers to continue the last 
 - The host starts once at least two players have joined.
 - New players see a short four-step tutorial before the round. Their teammates wait in a crew briefing, and the round starts when everyone finishes or after one minute.
 - Choose an active island site to begin a 30-second trip. You are committed to gathering that site's resource for the trip, and one supply is added to the shared stash automatically every six seconds.
-- Try the site's one-time quick puzzle during a trip to earn a powerup. Each visit randomly offers a four-symbol memory sequence or a symbol-count challenge, with 2.5 seconds to study it. Trips can also uncover powerups at random. Keep up to two; select one before departing to double your first haul, return sooner, or add supplies to your chosen resource.
+- Try the site's quick puzzle during a trip to earn a powerup. Each visit randomly offers a four-symbol memory sequence or a symbol-count challenge with a numeric answer. Both show a three-second countdown. Trips can also uncover powerups at random. Keep up to two; select one before departing to double your first haul, return sooner, or add supplies to your chosen resource.
+- Each crew can try one six-symbol Survey Challenge per round. Solving it earns a team token that pays for one site yield upgrade. Otherwise, buy an upgrade with 8 of that site's resource and 4 of each other resource; each site can be upgraded once per round, adding 3 supplies to every trip there.
 - Each crew has its own settlement order and progression. Spend materials from your shared stash to earn points; only your crew's next order changes when you deliver.
 - Resource sites rotate through short rest periods. Crystal showers sometimes double crystal yields. Your crew can split up across sites or coordinate on one resource.
 - At four or more players, each crew can customize its name and emblem in the lobby.

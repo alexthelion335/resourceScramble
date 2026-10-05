@@ -25,7 +25,7 @@ const ORDERS = [
 function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
-    players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
+    players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, upgradeBonus: trip.upgradeBonus, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
     teams: room.teams, timeLeft: room.phase === 'tutorial' ? Math.max(0, Math.ceil((room.tutorialEndsAt - Date.now()) / 1000)) : ['playing', 'tiebreak'].includes(room.phase) ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
     duration: room.duration, tutorialDuration: room.tutorialDuration, tiebreakDuration: room.tiebreakDuration, round: room.round, winner: room.winner, tiebreakMethod: room.tiebreakMethod,
     sites: room.sites, event: room.event,
@@ -38,7 +38,7 @@ function emit(room) {
 function newTeams() {
   const orders = [newOrder(), newOrder()];
   while (orders[0].name === orders[1].name) orders[1] = newOrder();
-  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id] }));
+  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id], upgrades: { wood: false, stone: false, crystal: false }, upgradeTokens: 0, surveyAttempted: false }));
 }
 function newOrder() {
   const order = ORDERS[Math.floor(Math.random() * ORDERS.length)];
@@ -200,9 +200,18 @@ function jsonRoute(req, res, pathname, data) {
   }
   if (pathname === '/api/puzzle' && req.method === 'GET') {
     if (!['playing', 'tiebreak'].includes(room.phase) || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
+    const symbols = ['🌙', '☀️', '⭐', '⚡'];
+    if (data.type === 'challenge') {
+      const team = room.teams[player.team];
+      if (team.surveyAttempted) return send(res, 409, { error: 'Your team has already tried this round’s survey challenge.' });
+      team.surveyAttempted = true;
+      player.trip.challengeAttempted = true;
+      player.trip.challengeSequence = Array.from({ length: 6 }, () => Math.floor(Math.random() * symbols.length));
+      emit(room);
+      return send(res, 200, { type: 'challenge', sequence: player.trip.challengeSequence, symbols });
+    }
     if (player.trip.puzzleSolved || player.trip.puzzleAttempted) return send(res, 409, { error: 'You have already tried this trip’s puzzle.' });
     player.trip.puzzleAttempted = true;
-    const symbols = ['🌙', '☀️', '⭐', '⚡'];
     player.trip.puzzleType = Math.random() < 0.5 ? 'memory' : 'count';
     if (player.trip.puzzleType === 'memory') player.trip.puzzleSequence = Array.from({ length: 4 }, () => Math.floor(Math.random() * symbols.length));
     else {
@@ -224,6 +233,23 @@ function jsonRoute(req, res, pathname, data) {
     if (!start(room)) return send(res, 409, { error: 'This room cannot start yet.' });
     return send(res, 200, { room: publicRoom(room) });
   }
+  if (pathname === '/api/upgrade' && req.method === 'POST') {
+    if (!['playing', 'tiebreak'].includes(room.phase)) return send(res, 409, { error: 'Site upgrades can only be purchased during a round.' });
+    const resource = data.resource;
+    if (!RESOURCES.includes(resource)) return send(res, 400, { error: 'Choose a valid site resource.' });
+    const team = room.teams[player.team];
+    if (team.upgrades[resource]) return send(res, 409, { error: 'Your team has already upgraded that site this round.' });
+    const costs = { wood: 4, stone: 4, crystal: 4 }; costs[resource] = 8;
+    if (data.useToken) {
+      if (team.upgradeTokens < 1) return send(res, 409, { error: 'Your team has no survey token to spend.' });
+      team.upgradeTokens -= 1;
+    } else {
+      if (!enough(team.stash, costs)) return send(res, 409, { error: 'Your team needs more supplies for that site upgrade.' });
+      for (const [key, quantity] of Object.entries(costs)) team.stash[key] -= quantity;
+    }
+    team.upgrades[resource] = true;
+    emit(room); return send(res, 200, { room: publicRoom(room) });
+  }
   if (pathname === '/api/trip' && req.method === 'POST') {
     if (!['playing', 'tiebreak'].includes(room.phase)) return send(res, 409, { error: 'The round is not running.' });
     if (player.trip) return send(res, 409, { error: 'Finish your current trip before choosing another site.' });
@@ -238,7 +264,12 @@ function jsonRoute(req, res, pathname, data) {
     const now = Date.now();
     const tripMs = boost?.id === 'swift_boots' ? 20000 : 30000;
     const yieldIntervalMs = boost?.id === 'swift_boots' ? 4000 : 6000;
-    player.trip = { siteId: site.id, resource: site.resource, startedAt: now, endsAt: now + tripMs, nextYieldAt: now + yieldIntervalMs, yieldIntervalMs, yields: 0, puzzleSolved: false, puzzleAttempted: false, boostId: boost?.id || null };
+    player.trip = { siteId: site.id, resource: site.resource, startedAt: now, endsAt: now + tripMs, nextYieldAt: now + yieldIntervalMs, yieldIntervalMs, yields: 0, puzzleSolved: false, puzzleAttempted: false, puzzleSubmitted: false, challengeAttempted: false, challengeSubmitted: false, upgradeBonus: 0, boostId: boost?.id || null };
+    if (room.teams[player.team].upgrades[site.resource]) {
+      player.trip.upgradeBonus = 3;
+      room.teams[player.team].stash[site.resource] += 3;
+      if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += 3;
+    }
     if (boost?.id === 'supply_flare') {
       room.teams[player.team].stash[site.resource] += 3;
       if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += 3;
@@ -247,21 +278,32 @@ function jsonRoute(req, res, pathname, data) {
   }
   if (pathname === '/api/puzzle' && req.method === 'POST') {
     if (!['playing', 'tiebreak'].includes(room.phase) || !player.trip) return send(res, 409, { error: 'Start a trip before trying its puzzle.' });
-    if (!player.trip.puzzleAttempted || player.trip.puzzleSolved) return send(res, 409, { error: 'Open the puzzle before submitting.' });
     const answer = Array.isArray(data.sequence) ? data.sequence : [];
-    const correct = player.trip.puzzleType === 'count'
-      ? answer.length === 1 && answer[0] === player.trip.countAnswer
-      : answer.length === 4 && answer.every((value, index) => value === player.trip.puzzleSequence[index]);
+    const isChallenge = data.type === 'challenge';
+    if (isChallenge && (!player.trip.challengeAttempted || player.trip.challengeSubmitted)) return send(res, 409, { error: 'Open the survey challenge before submitting.' });
+    if (!isChallenge && (!player.trip.puzzleAttempted || player.trip.puzzleSubmitted)) return send(res, 409, { error: 'Open the puzzle before submitting.' });
+    if (isChallenge) player.trip.challengeSubmitted = true;
+    else player.trip.puzzleSubmitted = true;
+    const correct = isChallenge
+      ? answer.length === 6 && answer.every((value, index) => value === player.trip.challengeSequence[index])
+      : player.trip.puzzleType === 'count'
+        ? answer.length === 1 && Number.isInteger(answer[0]) && answer[0] >= 0 && answer[0] <= 9 && answer[0] === player.trip.countAnswer
+        : answer.length === 4 && answer.every((value, index) => value === player.trip.puzzleSequence[index]);
     let reward = null;
     if (correct) {
-      player.trip.puzzleSolved = true;
-      if (player.boosts.length < 2) { reward = randomBoost(); player.boosts.push(reward); }
-      else {
-        room.teams[player.team].stash[player.trip.resource] += 2;
-        if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += 2;
+      if (isChallenge) {
+        player.trip.challengeSolved = true;
+        room.teams[player.team].upgradeTokens += 1;
+      } else {
+        player.trip.puzzleSolved = true;
+        if (player.boosts.length < 2) { reward = randomBoost(); player.boosts.push(reward); }
+        else {
+          room.teams[player.team].stash[player.trip.resource] += 2;
+          if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += 2;
+        }
       }
     }
-    emit(room); return send(res, 200, { correct, boost: reward, consolation: correct && !reward });
+    emit(room); return send(res, 200, { correct, boost: reward, consolation: correct && !reward && !isChallenge, tokenEarned: correct && isChallenge });
   }
   if (pathname === '/api/order' && req.method === 'POST') {
     if (!['playing', 'tiebreak'].includes(room.phase)) return send(res, 409, { error: 'The round is not running.' });
