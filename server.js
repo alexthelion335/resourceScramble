@@ -25,7 +25,7 @@ const ORDERS = [
 function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
-    players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, upgradeBonus: trip.upgradeBonus, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved } : null, boosts: boosts || [] })),
+    players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, upgradeBonus: trip.upgradeBonus, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved, challengeAttempted: trip.challengeAttempted } : null, boosts: boosts || [] })),
     teams: room.teams, timeLeft: room.phase === 'tutorial' ? Math.max(0, Math.ceil((room.tutorialEndsAt - Date.now()) / 1000)) : ['playing', 'tiebreak'].includes(room.phase) ? Math.max(0, Math.ceil((room.endsAt - Date.now()) / 1000)) : room.duration,
     duration: room.duration, tutorialDuration: room.tutorialDuration, tiebreakDuration: room.tiebreakDuration, round: room.round, winner: room.winner, tiebreakMethod: room.tiebreakMethod,
     sites: room.sites, event: room.event,
@@ -38,7 +38,7 @@ function emit(room) {
 function newTeams() {
   const orders = [newOrder(), newOrder()];
   while (orders[0].name === orders[1].name) orders[1] = newOrder();
-  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id], upgrades: { wood: false, stone: false, crystal: false }, upgradeTokens: 0, surveyAttempted: false }));
+  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id], upgrades: { wood: false, stone: false, crystal: false }, upgradeTokens: 0, surveySolved: false }));
 }
 function newOrder() {
   const order = ORDERS[Math.floor(Math.random() * ORDERS.length)];
@@ -203,8 +203,8 @@ function jsonRoute(req, res, pathname, data) {
     const symbols = ['🌙', '☀️', '⭐', '⚡'];
     if (data.type === 'challenge') {
       const team = room.teams[player.team];
-      if (team.surveyAttempted) return send(res, 409, { error: 'Your team has already tried this round’s survey challenge.' });
-      team.surveyAttempted = true;
+      if (team.surveySolved) return send(res, 409, { error: 'Your team has already earned this round’s survey token.' });
+      if (player.trip.challengeAttempted) return send(res, 409, { error: 'You have already tried the survey challenge this trip. Try again on your next trip.' });
       player.trip.challengeAttempted = true;
       player.trip.challengeSequence = Array.from({ length: 6 }, () => Math.floor(Math.random() * symbols.length));
       emit(room);
@@ -293,6 +293,7 @@ function jsonRoute(req, res, pathname, data) {
     if (correct) {
       if (isChallenge) {
         player.trip.challengeSolved = true;
+        room.teams[player.team].surveySolved = true;
         room.teams[player.team].upgradeTokens += 1;
       } else {
         player.trip.puzzleSolved = true;

@@ -115,7 +115,7 @@ function renderGame(me) {
     const interval = trip.yieldIntervalMs || 6000;
     const nextHaul = Math.max(0, Math.ceil((interval - (elapsed % interval)) / 1000));
     const puzzleAction = trip.puzzleAvailable ? '<button class="puzzle-button" id="try-puzzle">Solve site puzzle · earn a powerup ✦</button>' : `<small>${trip.puzzleSolved ? 'Puzzle solved · powerup earned' : trip.puzzleAttempted ? 'Puzzle attempt used' : `Next automatic haul in ${nextHaul}s`}</small>`;
-    const challengeAction = !team.surveyAttempted ? '<button class="puzzle-button challenge-button" id="try-challenge">Survey challenge · win a yield token ✦</button>' : team.upgradeTokens ? '<small class="survey-status">Survey token ready · spend it on a site upgrade</small>' : '<small class="survey-status">Survey challenge used this round</small>';
+    const challengeAction = team.surveySolved ? team.upgradeTokens ? '<small class="survey-status">Survey token ready · spend it on a site upgrade</small>' : '<small class="survey-status">Survey challenge solved this round</small>' : trip.challengeAttempted ? '<small class="survey-status">Try the Survey Challenge again on your next trip</small>' : '<button class="puzzle-button challenge-button" id="try-challenge">Survey challenge · win a yield token ✦</button>';
     $('trip-status').innerHTML = `<div class="trip-active"><strong>${tripSite.icon} On trip: ${escapeHtml(tripSite.name)}</strong><small>Return in ${remaining}s · ${trip.yields} ${names[tripSite.resource]} gathered${trip.upgradeBonus ? ` · +${trip.upgradeBonus} site bonus` : ''}</small><div class="trip-progress"><i style="width:${percent}%"></i></div>${puzzleAction}${challengeAction}</div>`;
   } else {
     $('trip-status').innerHTML = `<div class="trip-ready"><b>${selectedBoostId ? 'Powerup selected for your next trip' : 'Choose a site for your next trip'}</b><span>${selectedBoostId ? 'It will activate when you depart.' : 'Plan your crew’s resource route.'}</span></div>`;
@@ -239,7 +239,7 @@ async function submitPuzzleAnswer(answer) {
       message.textContent = messageText;
       setTimeout(() => { closePuzzle(); toast(result.tokenEarned ? 'Site-upgrade token earned!' : result.boost ? `${result.boost.name} found!` : 'Puzzle bonus: 2 supplies'); }, 1150);
     } else {
-      message.textContent = puzzleType === 'challenge' ? 'Survey missed. Your team’s one challenge is spent.' : 'Not quite. This trip’s puzzle is spent.';
+      message.textContent = puzzleType === 'challenge' ? 'Survey missed. Try the challenge again on your next trip.' : 'Not quite. This trip’s puzzle is spent.';
       message.classList.add('wrong'); setTimeout(closePuzzle, 1100);
     }
   } catch (error) { $('puzzle-message').textContent = error.message; }
