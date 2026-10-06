@@ -188,7 +188,7 @@ function renderHelper(team) {
   if (room.helperTeamId !== team.id) { panel.innerHTML = ''; panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   const helperTrip = team.helperTrip;
-  const status = helperTrip ? `Helper gathering ${names[helperTrip.resource]} · ${helperTrip.yields}/3` : 'Helper gathers up to 3 supplies over 30s after a teammate departs.';
+  const status = helperTrip ? `Helper gathering ${names[helperTrip.lastResource || helperTrip.resource]} · ${helperTrip.yields}/3` : 'Helper gathers up to 3 supplies over 30s after a teammate departs.';
   const members = room.players.filter((player) => player.team === team.id);
   if (members.length === 1) {
     const options = ['auto', ...Object.keys(names)].map((resource) => `<option value="${resource}" ${helperOverrideResource === resource ? 'selected' : ''}>${resource === 'auto' ? 'Automatic · best other order resource' : `Override · ${names[resource]}`}</option>`).join('');

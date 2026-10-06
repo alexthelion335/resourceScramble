@@ -135,9 +135,13 @@ function start(room) {
       const helperTrip = team.helperTrip;
       if (!helperTrip) continue;
       while (helperTrip.nextYieldAt <= Date.now() && helperTrip.nextYieldAt <= helperTrip.endsAt && helperTrip.yields < 3) {
-        const site = room.sites.find((entry) => entry.resource === helperTrip.resource);
-        if (site?.active) {
-          team.stash[helperTrip.resource] += 1; helperTrip.yields += 1;
+        const preferredSite = room.sites.find((entry) => entry.resource === helperTrip.resource);
+        const alternatives = room.sites.filter((entry) => entry.active && entry.resource !== helperTrip.excludeResource);
+        const available = alternatives.length ? alternatives : room.sites.filter((entry) => entry.active);
+        const fallbackSite = available.sort((a, b) => resourceNeed(team, b.resource) - resourceNeed(team, a.resource) || (team.order.costs[b.resource] || 0) - (team.order.costs[a.resource] || 0) || team.stash[a.resource] - team.stash[b.resource])[0];
+        const gatherSite = preferredSite?.active ? preferredSite : fallbackSite;
+        if (gatherSite) {
+          team.stash[gatherSite.resource] += 1; helperTrip.yields += 1; helperTrip.lastResource = gatherSite.resource;
           if (room.phase === 'tiebreak') room.tiebreakHauls[team.id] += 1;
         }
         helperTrip.nextYieldAt += 10000;
@@ -339,7 +343,7 @@ function jsonRoute(req, res, pathname, data) {
       const helperResource = teamSize === 1
         ? (RESOURCES.includes(data.helperResource) ? data.helperResource : usefulResource(team, site.resource))
         : helperResourceFor(room, team, site.resource);
-      team.helperTrip = { resource: helperResource, startedAt: now, endsAt: now + 30000, nextYieldAt: now + 10000, yields: 0 };
+      team.helperTrip = { resource: helperResource, excludeResource: site.resource, lastResource: helperResource, startedAt: now, endsAt: now + 30000, nextYieldAt: now + 10000, yields: 0 };
     }
     if (room.teams[player.team].upgrades[site.resource]) {
       player.trip.upgradeBonus = 3;
