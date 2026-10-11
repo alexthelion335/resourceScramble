@@ -2,6 +2,10 @@
 
 A real-time, two-crew resource gathering game for 2–8 players. Each crew shares a stash, gathers materials around the island, and completes settlement orders for points before the ten-minute storm timer expires.
 
+## Framework / stack
+
+This website does not use a front-end framework. It uses vanilla HTML, CSS, and JavaScript in the browser, served by a Node.js HTTP server.
+
 ## Run it
 
 Requires Node.js 18 or newer. From this folder, run:
