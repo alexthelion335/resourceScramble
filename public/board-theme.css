@@ -19,7 +19,7 @@ body {
 .paper-grain { opacity: .28; }
 .topbar { border-color: #9b835433; }
 .brand { display: inline-flex; align-items: center; gap: 9px; }
-.brand-logo { display: block; width: 35px; height: 35px; filter: drop-shadow(0 2px 1px #49351c33); }
+.brand-logo { display: block; width: 40px; height: 40px; filter: drop-shadow(0 2px 1px #49351c33); }
 .brand .brand-name { color: var(--ink); white-space: nowrap; }
 .brand .brand-name > span { color: #82755e; font-weight: 500; }
 .hero-copy .eyebrow, .room-head .eyebrow { color: #526b42; }
