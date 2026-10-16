@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f4f0e7"><title>Resource Scramble</title>
+  <meta name="theme-color" content="#eee5d2"><link rel="icon" type="image/svg+xml" href="/logo.svg"><title>Resource Scramble</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/game.css">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/game.css"><link rel="stylesheet" href="/board-theme.css">
 </head>
 <body>
   <div class="paper-grain"></div>
-  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">✦</span> resource<span>scramble</span></a><div class="header-actions"><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode" title="Switch to light mode">☼</button><div class="top-note"><i></i> THE ISLAND IS LIVE</div></div></header>
+  <header class="topbar"><a class="brand" href="/" aria-label="Resource Scramble home"><img class="brand-logo" src="/logo.svg" alt=""> <span class="brand-name">resource<span>scramble</span></span></a><div class="header-actions"><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode" title="Switch to light mode">☼</button><div class="top-note"><i></i> THE ISLAND IS LIVE</div></div></header>
   <main id="app" class="app-shell">
     <section id="home" class="home-view">
       <div class="hero-copy"><div class="eyebrow"><span>✳</span> A REAL-TIME CREW RACE</div><h1>Gather fast.<br><em>Build together.</em></h1><p>Team up, raid the island for supplies, and fill the settlement orders before the storm rolls in.</p>
@@ -19,7 +19,7 @@
         <button id="create-room" class="button primary full">Create a room <span>↗</span></button><div class="divider"><span>OR JOIN A CREW</span></div>
         <div class="join-row"><input id="room-code" maxlength="6" placeholder="ROOM CODE" autocomplete="off"><button id="join-room" class="button dark">Join <span>→</span></button></div><p id="home-error" class="error"></p>
       </div>
-      <div class="home-foot"><span>NO DOWNLOADS. JUST YOUR PHONE.</span><span>MADE FOR FRIENDS WHO GET A LITTLE COMPETITIVE</span></div>
+      <div class="home-foot"><span>PLAY ON PHONES OR COMPUTERS</span><span>MADE FOR FRIENDS WHO GET A LITTLE COMPETITIVE</span></div>
     </section>
     <section id="room" class="room-view hidden">
       <div class="room-head"><div><div class="eyebrow">THE FLOATING ISLAND · ROUND <span id="round-number">1</span></div><h1 id="room-title">Crew camp</h1></div><div class="room-code-box"><small>ROOM CODE</small><button id="copy-code" aria-label="Copy room code"><b id="room-code-display">------</b><span>▢</span></button></div></div>

@@ -420,7 +420,10 @@ const server = http.createServer(async (req, res) => {
   if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end('Forbidden'); }
   fs.readFile(file, (error, content) => {
     if (error) { res.writeHead(404); return res.end('Not found'); }
-    const type = file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'text/javascript' : 'text/html';
+    const type = file.endsWith('.css') ? 'text/css'
+      : file.endsWith('.js') ? 'text/javascript'
+        : file.endsWith('.svg') ? 'image/svg+xml'
+          : 'text/html';
     res.writeHead(200, { 'content-type': `${type}; charset=utf-8` }); res.end(content);
   });
 });
