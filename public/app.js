@@ -6,7 +6,7 @@ const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 const siteButtonOrder = ['grove', 'crystal', 'quarry'];
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
-let room = null, playerId = null, stream = null, toastTimer = null, selectedBoostId = null, helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, pendingSession = null, tutorialStep = 0;
+let room = null, playerId = null, stream = null, spectatorMode = false, toastTimer = null, selectedBoostId = null, helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, pendingSession = null, tutorialStep = 0;
 const tutorialSteps = [
   ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs.'],
   ['Your crew gathers together', 'Supplies arrive automatically every six seconds while you are away. Everyone on your team adds to the same stash, even when you are exploring different regions.'],
@@ -27,8 +27,8 @@ function saveSession() {
   if (room && playerId) localStorage.setItem('resource-scramble-session', JSON.stringify({ code: room.code, playerId }));
 }
 function enterRoom(nextRoom, id) {
-  room = nextRoom; playerId = id; helperOverrideResource = 'auto'; saveSession();
-  $('home').classList.add('hidden'); $('room').classList.remove('hidden');
+  room = nextRoom; playerId = id; spectatorMode = false; helperOverrideResource = 'auto'; document.body.classList.remove('spectator-mode'); $('spectator-screen').classList.add('hidden'); saveSession();
+  $('home').classList.add('hidden'); $('room').classList.remove('hidden'); $('room-head').classList.remove('hidden'); $('room-error').classList.remove('hidden');
   $('room-code-display').textContent = room.code; $('round-number').textContent = room.round;
   setError('room-error'); render();
   if (stream) stream.close();
@@ -37,8 +37,29 @@ function enterRoom(nextRoom, id) {
   stream.onerror = () => { if (room && room.phase !== 'finished') setError('room-error', 'Reconnecting to the island…'); };
   history.replaceState({}, '', `/?room=${room.code}`);
 }
+function enterSpectator(nextRoom) {
+  room = nextRoom; playerId = null; spectatorMode = true;
+  document.body.classList.add('spectator-mode');
+  $('home').classList.add('hidden'); $('room').classList.remove('hidden');
+  $('spectator-screen').classList.remove('hidden');
+  setError('room-error'); render();
+  if (stream) stream.close();
+  stream = new EventSource(`/api/stream?code=${room.code}`);
+  stream.onmessage = (event) => { room = JSON.parse(event.data); render(); };
+  stream.onerror = () => { if (room && room.phase !== 'finished') $('tv-event').textContent = 'Connection interrupted · reconnecting to the room…'; };
+  const url = new URL(location.href); url.searchParams.set('room', room.code); url.searchParams.set('view', 'scoreboard');
+  history.replaceState({}, '', url);
+}
+function exitSpectator() {
+  if (stream) stream.close();
+  stream = null; room = null; playerId = null; spectatorMode = false;
+  document.body.classList.remove('spectator-mode');
+  $('spectator-screen').classList.add('hidden'); $('room').classList.add('hidden'); $('home').classList.remove('hidden');
+  history.replaceState({}, '', '/');
+}
 function render() {
   if (!room) return;
+  if (spectatorMode) { renderSpectator(); return; }
   $('room-code-display').textContent = room.code; $('round-number').textContent = room.round;
   $('player-count').textContent = room.players.length;
   const myPlayer = room.players.find((p) => p.id === playerId);
@@ -213,6 +234,54 @@ function renderResult() {
   $('result-scores').innerHTML = room.teams.map((team) => `<div><small>${escapeHtml(team.symbol)} ${escapeHtml(team.name)}</small><b>${team.score} pts</b><small>${Object.values(team.stash).reduce((a,b)=>a+b,0)} supplies left</small></div>`).join('');
   $('rematch').classList.toggle('hidden', room.players.find((p) => p.id === playerId)?.id !== room.createdBy);
 }
+function renderSpectator() {
+  $('room-head').classList.add('hidden');
+  $('lobby-panel').classList.add('hidden');
+  $('tutorial-panel').classList.add('hidden');
+  $('game-panel').classList.add('hidden');
+  $('result-panel').classList.add('hidden');
+  $('room-error').classList.add('hidden');
+  $('spectator-screen').classList.remove('hidden');
+  const phaseLabels = { lobby: 'LOBBY', tutorial: 'CREW BRIEFING', playing: 'LIVE ROUND', tiebreak: 'SUDDEN DEATH', finished: 'FINAL' };
+  $('tv-room-code').textContent = room.code;
+  $('tv-footer-code').textContent = room.code;
+  $('tv-phase').textContent = phaseLabels[room.phase] || 'LIVE';
+  $('tv-event').textContent = room.phase === 'lobby' ? 'The crews are gathering · the round begins when everyone is ready' : room.event;
+  const timed = ['tutorial', 'playing', 'tiebreak'].includes(room.phase);
+  const seconds = timed ? Math.max(0, room.timeLeft) : 0;
+  $('tv-clock-label').textContent = room.phase === 'tiebreak' ? 'SUDDEN DEATH' : room.phase === 'tutorial' ? 'BRIEFING STARTS IN' : room.phase === 'playing' ? 'TIME LEFT' : room.phase === 'finished' ? 'ROUND COMPLETE' : 'ROUND STARTS IN';
+  $('tv-clock').textContent = timed ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : room.phase === 'finished' ? 'FINAL' : '—:—';
+  const timerDuration = room.phase === 'tiebreak' ? room.tiebreakDuration : room.phase === 'tutorial' ? room.tutorialDuration : room.duration;
+  $('tv-clock-bar').style.width = timed ? `${Math.max(0, Math.min(100, seconds / timerDuration * 100))}%` : '0%';
+  const readyCount = room.players.filter((player) => player.ready).length;
+  const activeTrips = room.players.filter((player) => player.trip);
+  if (room.phase === 'lobby') $('tv-center-status').textContent = `${readyCount} of ${room.players.length} players ready`;
+  else if (room.phase === 'tutorial') $('tv-center-status').textContent = 'New players are learning the rules';
+  else if (room.phase === 'finished') $('tv-center-status').textContent = room.winner === 'draw' ? 'The crews finished level' : `${room.teams[room.winner]?.name || 'A crew'} wins`;
+  else $('tv-center-status').textContent = `${activeTrips.length} trip${activeTrips.length === 1 ? '' : 's'} underway${room.teams[0].score === room.teams[1].score ? ' · scores tied' : ''}`;
+  room.teams.forEach((team) => {
+    const id = team.id;
+    $(`tv-symbol-${id}`).textContent = team.symbol;
+    $(`tv-name-${id}`).textContent = team.name;
+    $(`tv-score-${id}`).textContent = team.score;
+    const orderCosts = Object.entries(team.order.costs).map(([resource, amount]) => `<span class="tv-cost ${team.stash[resource] >= amount ? 'ready' : ''}">${icons[resource]} <b>${team.stash[resource]}</b><i>/ ${amount}</i></span>`).join('');
+    $(`tv-order-${id}`).innerHTML = `<div class="tv-order-head"><span>${room.phase === 'finished' ? 'FINAL ORDER' : 'CURRENT ORDER'}</span><b>${escapeHtml(team.order.name)}</b><small>${room.phase === 'tiebreak' ? 'WIN' : `${team.order.points} pts`}</small></div><div class="tv-costs">${orderCosts}</div>`;
+    $(`tv-stash-${id}`).innerHTML = `<span>SHARED SUPPLIES</span>${Object.keys(names).map((resource) => `<b>${icons[resource]} ${team.stash[resource]}</b>`).join('')}`;
+    const roster = room.players.filter((player) => player.team === id).map((player) => {
+      const site = player.trip && room.sites.find((entry) => entry.id === player.trip.siteId);
+      const detail = room.phase === 'lobby' ? (player.ready ? 'READY' : 'NOT READY') : site ? `${site.icon} ${site.name}` : 'AT BASECAMP';
+      return `<span class="tv-player"><b>${escapeHtml(player.name)}</b><small>${escapeHtml(detail)}</small></span>`;
+    }).join('');
+    $(`tv-players-${id}`).innerHTML = roster || '<span class="tv-player empty">No crew members yet</span>';
+  });
+  $('tv-player-count').textContent = room.phase === 'lobby' ? `${room.players.length} PLAYERS · ${readyCount} READY` : `${room.players.length} PLAYERS · ROUND ${room.round}`;
+  const tripSummary = activeTrips.map((player) => {
+    const team = room.teams[player.team];
+    const site = room.sites.find((entry) => entry.id === player.trip.siteId);
+    return `${team.symbol} ${escapeHtml(player.name)} · ${escapeHtml(site?.name || 'on trip')}`;
+  });
+  $('tv-trips').innerHTML = tripSummary.length ? tripSummary.join(' <span>•</span> ') : room.phase === 'lobby' ? 'Waiting for the host to start' : 'No trips underway';
+}
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
 function toast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1700); }
 function updateThemeButton() {
@@ -302,6 +371,29 @@ $('join-room').addEventListener('click', async () => {
   catch (error) { setError('home-error', error.message); }
   finally { $('join-room').disabled = false; }
 });
+$('watch-scoreboard').addEventListener('click', async () => {
+  setError('watch-error');
+  const code = $('room-code').value.trim().toUpperCase();
+  if (!code) return setError('watch-error', 'Enter a room code to watch its scoreboard.');
+  $('watch-scoreboard').disabled = true;
+  try {
+    const result = await api(`state?code=${encodeURIComponent(code)}`, {}, 'GET');
+    enterSpectator(result.room);
+  } catch (error) { setError('watch-error', error.message); }
+  finally { $('watch-scoreboard').disabled = false; }
+});
+$('open-scoreboard').addEventListener('click', () => {
+  if (!room) return;
+  const url = new URL(location.href); url.searchParams.set('room', room.code); url.searchParams.set('view', 'scoreboard');
+  window.open(url, '_blank', 'noopener,noreferrer');
+});
+$('scoreboard-fullscreen').addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await $('spectator-screen').requestFullscreen();
+  } catch { toast('Use your browser’s full-screen control for TV mode.'); }
+});
+$('scoreboard-exit').addEventListener('click', exitSpectator);
 $('room-code').addEventListener('input', (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
 $('room-code').addEventListener('keydown', (event) => { if (event.key === 'Enter') $('join-room').click(); });
 $('lobby-teams').addEventListener('change', async (event) => {
@@ -427,6 +519,13 @@ window.addEventListener('pagehide', () => { if (stream) stream.close(); });
 
 // Rejoin a room after a refresh on this device; the session token is local to this browser.
 (async function restoreSession() {
+  const requested = new URLSearchParams(location.search);
+  if (requested.get('view') === 'scoreboard' && requested.get('room')) {
+    try {
+      const result = await api(`state?code=${encodeURIComponent(requested.get('room'))}`, {}, 'GET');
+      enterSpectator(result.room); return;
+    } catch (error) { setError('watch-error', error.message); }
+  }
   const saved = localStorage.getItem('resource-scramble-session');
   if (!saved) return;
   let session;
