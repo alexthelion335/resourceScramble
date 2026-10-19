@@ -2,23 +2,28 @@ const $ = (id) => document.getElementById(id);
 const storedTheme = localStorage.getItem('resource-scramble-theme');
 const systemDarkMode = window.matchMedia?.('(prefers-color-scheme: dark)');
 if (storedTheme === 'light' || (!storedTheme && !systemDarkMode?.matches)) document.body.classList.add('light-mode');
-const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
-const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
+const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal', iron: 'Iron' };
+const icons = { wood: '🪵', stone: '🪨', crystal: '💎', iron: '⛏️' };
 const difficultyDescriptions = {
   relaxed: 'Sites rest less often and for less time; powerups and resource surges are more common.',
   standard: 'The current rotation, event odds, and order costs.',
   stormy: 'Sites rotate faster, surges are less common, and order costs rise by 15% (rounded up).'
 };
-const siteButtonOrder = ['grove', 'crystal', 'quarry'];
+const siteButtonOrder = ['grove', 'crystal', 'quarry', 'mine'];
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
-let room = null, playerId = null, stream = null, spectatorMode = false, toastTimer = null, selectedBoostId = null, helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, puzzleSubmitting = false, pendingSession = null, tutorialStep = 0;
+let room = null, playerId = null, stream = null, spectatorMode = false, toastTimer = null, selectedBoostId = null, selectedSabotageSiteId = '', helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, puzzleSubmitting = false, pendingSession = null, tutorialStep = 0;
 const tutorialSteps = [
-  ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs.'],
+  ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs. Iron from the mine also fuels sabotage.'],
   ['Your crew gathers together', 'Supplies arrive automatically every six seconds while you are away. Everyone on your team adds to the same stash, even when you are exploring different regions.'],
   ['Solve site signals for a boost', 'Once during a trip, try the quick site puzzle for a powerup. You can also discover powerups while gathering; choose one before your next trip.'],
-  ['Deliver your crew’s orders', 'Use the shared stash to complete your crew’s next settlement order. A Survey Challenge can earn a token for a site upgrade. Your crew’s score after ten minutes wins; a tie starts Golden Beacon sudden death.']
+  ['Deliver and disrupt', 'Use the shared stash to complete settlement orders. Spend 2 iron and 1 crystal to block one opposing haul; they keep supplies already collected. A Survey Challenge earns a site-upgrade token. Highest score after ten minutes wins; ties go to Golden Beacon sudden death.']
 ];
-const upgradeCosts = { wood: { wood: 8, stone: 4, crystal: 4 }, stone: { wood: 4, stone: 8, crystal: 4 }, crystal: { wood: 4, stone: 4, crystal: 8 } };
+const upgradeCosts = {
+  wood: { wood: 8, stone: 4, crystal: 4, iron: 4 },
+  stone: { wood: 4, stone: 8, crystal: 4, iron: 4 },
+  crystal: { wood: 4, stone: 4, crystal: 8, iron: 4 },
+  iron: { wood: 4, stone: 4, crystal: 4, iron: 8 }
+};
 
 function setError(id, message = '') { $(id).textContent = message; }
 async function api(path, data = {}, method = 'POST') {
@@ -165,6 +170,7 @@ function renderGame(me) {
   $('event-banner').innerHTML = `<span>✦</span> ${escapeHtml(room.event)}`;
   const trip = me.trip;
   renderHelper(team);
+  renderSabotage(team, me);
   const tripSite = trip && room.sites.find((site) => site.id === trip.siteId);
   if (trip && tripSite) {
     const duration = trip.endsAt - trip.startedAt;
@@ -175,7 +181,8 @@ function renderGame(me) {
     const nextHaul = Math.max(0, Math.ceil((interval - (elapsed % interval)) / 1000));
     const puzzleAction = trip.puzzleAvailable ? '<button class="puzzle-button" id="try-puzzle">Solve site puzzle · earn a powerup ✦</button>' : `<small>${trip.puzzleSolved ? 'Puzzle solved · powerup earned' : trip.puzzleAttempted ? 'Puzzle attempt used' : `Next automatic haul in ${nextHaul}s`}</small>`;
     const challengeAction = team.surveySolved ? team.upgradeTokens ? '<small class="survey-status">Survey token ready · spend it on a site upgrade</small>' : '<small class="survey-status">Survey challenge solved this round</small>' : trip.challengeAttempted ? '<small class="survey-status">Try the Survey Challenge again on your next trip</small>' : '<button class="puzzle-button challenge-button" id="try-challenge">Survey challenge · win a yield token ✦</button>';
-    $('trip-status').innerHTML = `<div class="trip-active"><strong>${tripSite.icon} On trip: ${escapeHtml(tripSite.name)}</strong><small>Return in ${remaining}s · ${trip.yields} ${names[tripSite.resource]} gathered${trip.upgradeBonus ? ` · +${trip.upgradeBonus} site bonus` : ''}</small><div class="trip-progress"><i style="width:${percent}%"></i></div>${puzzleAction}${challengeAction}</div>`;
+    const sabotageNotice = trip.sabotagePending ? '<small class="sabotage-warning">⚠ Sabotage incoming · your next haul is blocked</small>' : '';
+    $('trip-status').innerHTML = `<div class="trip-active"><strong>${tripSite.icon} On trip: ${escapeHtml(tripSite.name)}</strong><small>Return in ${remaining}s · ${trip.yields} ${names[tripSite.resource]} gathered${trip.upgradeBonus ? ` · +${trip.upgradeBonus} site bonus` : ''}</small>${sabotageNotice}<div class="trip-progress"><i style="width:${percent}%"></i></div>${puzzleAction}${challengeAction}</div>`;
   } else {
     $('trip-status').innerHTML = `<div class="trip-ready"><b>${selectedBoostId ? 'Powerup selected for your next trip' : 'Choose a site for your next trip'}</b><span>${selectedBoostId ? 'It will activate when you depart.' : 'Plan your crew’s resource route.'}</span></div>`;
   }
@@ -246,6 +253,26 @@ function renderHelper(team) {
     return `<button class="helper-vote-button ${resourceVotes[playerId] === resource ? 'selected' : ''}" data-helper-resource="${resource}">${icons[resource]} ${names[resource]} <small>${votes} vote${votes === 1 ? '' : 's'}</small></button>`;
   }).join('')}</div>` : '';
   panel.innerHTML = `<div class="helper-panel-head"><b>🧭 Crew helper</b><span>${escapeHtml(status)}</span></div><p>Vote for automatic order-based gathering or manual resource choice. Majority decides; ties stay automatic. Helper hauls can also uncover powerups for your crew.</p><div class="helper-mode-votes"><button class="helper-vote-button ${modeVotes[playerId] === 'auto' ? 'selected' : ''}" data-helper-mode="auto">Auto <small>${autoVotes} vote${autoVotes === 1 ? '' : 's'}</small></button><button class="helper-vote-button ${modeVotes[playerId] === 'manual' ? 'selected' : ''}" data-helper-mode="manual">Choose resource <small>${manualVotes} vote${manualVotes === 1 ? '' : 's'}</small></button></div>${resourceButtons}`;
+}
+function renderSabotage(team, me) {
+  const panel = $('sabotage-panel');
+  const opponents = room.players.filter((member) => member.team !== me.team && member.trip?.sabotageTargetable);
+  const sites = [...new Set(opponents.map((member) => member.trip.siteId))]
+    .map((siteId) => ({ site: room.sites.find((entry) => entry.id === siteId), count: opponents.filter((member) => member.trip.siteId === siteId).length }))
+    .filter((entry) => entry.site);
+  if (!sites.some((entry) => entry.site.id === selectedSabotageSiteId)) selectedSabotageSiteId = sites[0]?.site.id || '';
+  const cooldown = Math.max(0, Math.ceil(((team.sabotageCooldownUntil || 0) - Date.now()) / 1000));
+  const canAfford = team.stash.iron >= 2 && team.stash.crystal >= 1;
+  const canUse = room.phase === 'playing' && !cooldown && canAfford && sites.length > 0;
+  const options = sites.length
+    ? sites.map(({ site, count }) => `<option value="${site.id}" ${site.id === selectedSabotageSiteId ? 'selected' : ''}>${escapeHtml(site.name)} · ${count} crew${count === 1 ? '' : ' members'}</option>`).join('')
+    : '<option value="">No opposing trips with a haul left</option>';
+  const status = room.phase !== 'playing' ? 'Unavailable during sudden death.'
+    : cooldown ? `Rig recharging · ${cooldown}s`
+      : !sites.length ? 'Wait for an opposing crew trip.'
+        : !canAfford ? `Need ${icons.iron} 2 Iron and ${icons.crystal} 1 Crystal.`
+          : 'Disrupt one upcoming haul. Collected supplies stay safe.';
+  panel.innerHTML = `<div class="sabotage-head"><div><div class="eyebrow">CREW ACTION</div><h3>Sabotage</h3></div><span class="sabotage-cost">${icons.iron} 2 · ${icons.crystal} 1</span></div><p>${escapeHtml(status)}</p><div class="sabotage-controls"><label for="sabotage-site">Opposing site</label><select id="sabotage-site" ${sites.length ? '' : 'disabled'}>${options}</select><button id="sabotage-button" class="button dark" ${canUse ? '' : 'disabled'}>Jam site <span>↗</span></button></div>`;
 }
 function renderResult() {
   const winner = room.winner;
@@ -530,6 +557,16 @@ $('helper-panel').addEventListener('click', async (event) => {
   const resource = resourceButton?.dataset.helperResource || team.helperResourceVotes?.[playerId] || usefulHelperResource(team);
   try { const result = await api('helper-vote', { code: room.code, playerId, mode, resource }); room = result.room; render(); }
   catch (error) { toast(error.message); }
+});
+$('sabotage-panel').addEventListener('change', (event) => {
+  if (event.target.matches('#sabotage-site')) selectedSabotageSiteId = event.target.value;
+});
+$('sabotage-panel').addEventListener('click', async (event) => {
+  if (!event.target.closest('#sabotage-button') || event.target.closest('#sabotage-button').disabled) return;
+  try {
+    const result = await api('sabotage', { code: room.code, playerId, siteId: selectedSabotageSiteId });
+    room = result.room; render(); toast('Sabotage launched · their next haul is disrupted.');
+  } catch (error) { toast(error.message); }
 });
 $('powerups').addEventListener('click', (event) => {
   const card = event.target.closest('[data-boost]'); if (!card || card.disabled) return;

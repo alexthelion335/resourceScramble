@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = path.join(__dirname, 'public');
 const rooms = new Map();
-const RESOURCES = ['wood', 'stone', 'crystal'];
+const RESOURCES = ['wood', 'stone', 'crystal', 'iron'];
 const DIFFICULTIES = {
   relaxed: { firstRotationMs: 30000, rotationMs: 24000, restMs: 10000, surgeChance: 0.45, playerPowerupChance: 0.05, helperPowerupChance: 0.08, orderMultiplier: 1 },
   standard: { firstRotationMs: 25000, rotationMs: 18000, restMs: 18000, surgeChance: 0.35, playerPowerupChance: 0.035, helperPowerupChance: 0.06, orderMultiplier: 1 },
@@ -25,12 +25,13 @@ const ORDERS = [
   { name: 'Signal Flare', costs: { stone: 4, crystal: 5 }, points: 9 },
   { name: 'Sky Bridge', costs: { wood: 10, crystal: 4 }, points: 11 },
   { name: 'Shelter Kit', costs: { wood: 6, stone: 6, crystal: 2 }, points: 13 },
+  { name: 'Ironwatch Tower', costs: { wood: 6, stone: 5, iron: 4 }, points: 12 },
 ];
 
 function publicRoom(room) {
   return {
     code: room.code, phase: room.phase, createdBy: room.createdBy,
-    players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, upgradeBonus: trip.upgradeBonus, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved, challengeAttempted: trip.challengeAttempted } : null, boosts: boosts || [] })),
+    players: [...room.players.values()].map(({ id, name, team, online, ready, trip, boosts, newPlayer, tutorialDone }) => ({ id, name, team, online, ready, newPlayer, tutorialDone, trip: trip ? { siteId: trip.siteId, startedAt: trip.startedAt, endsAt: trip.endsAt, yieldIntervalMs: trip.yieldIntervalMs, yields: trip.yields, upgradeBonus: trip.upgradeBonus, puzzleSolved: trip.puzzleSolved, puzzleAvailable: !trip.puzzleAttempted && !trip.puzzleSolved, challengeAttempted: trip.challengeAttempted, sabotagePending: Boolean(trip.sabotagePending), sabotageTargetable: !trip.sabotagePending && trip.nextYieldAt <= trip.endsAt } : null, boosts: boosts || [] })),
     teams: room.teams.map((team) => {
       const { baseCosts, ...order } = team.order;
       return { ...team, order, helperMode: helperModeFor(room, team) };
@@ -47,7 +48,7 @@ function emit(room) {
 function newTeams(difficulty = 'standard') {
   const orders = [newOrder(difficulty), newOrder(difficulty)];
   while (orders[0].name === orders[1].name) orders[1] = newOrder(difficulty);
-  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0 }, order: orders[id], upgrades: { wood: false, stone: false, crystal: false }, upgradeTokens: 0, surveySolved: false, helperMode: 'auto', helperModeVotes: {}, helperResourceVotes: {}, helperTrip: null }));
+  return [0, 1].map((id) => ({ id, name: id ? 'Tide Crew' : 'Ember Crew', symbol: id ? '🌊' : '🔥', color: id ? '#368fe8' : '#f07846', score: 0, stash: { wood: 0, stone: 0, crystal: 0, iron: 0 }, order: orders[id], upgrades: { wood: false, stone: false, crystal: false, iron: false }, upgradeTokens: 0, surveySolved: false, helperMode: 'auto', helperModeVotes: {}, helperResourceVotes: {}, helperTrip: null, sabotageCooldownUntil: 0 }));
 }
 function resourceNeed(team, resource) { return Math.max(0, (team.order.costs[resource] || 0) - team.stash[resource]); }
 function usefulResource(team, exclude = null) {
@@ -93,6 +94,7 @@ function createRoom(name, isNewPlayer) {
       { id: 'grove', name: 'Driftwood Grove', resource: 'wood', icon: '🌲', active: true },
       { id: 'quarry', name: 'Cloudstone Ridge', resource: 'stone', icon: '🪨', active: true },
       { id: 'crystal', name: 'Prism Grotto', resource: 'crystal', icon: '💎', active: true },
+      { id: 'mine', name: 'Ironroot Mine', resource: 'iron', icon: '⛏️', active: true },
     ], event: 'All sites are open', boostedResource: null, restingSiteId: null, siteRestEndsAt: 0, listeners: new Set(), timer: null, endsAt: 0,
   };
   rooms.set(code, room);
@@ -135,14 +137,18 @@ function start(room) {
       const trip = player.trip;
       const finalGatherAt = Math.min(trip.endsAt, room.endsAt);
       while (trip.nextYieldAt <= Date.now() && trip.nextYieldAt <= finalGatherAt) {
-        let amount = room.boostedResource === trip.resource ? 2 : 1;
-        if (trip.boostId === 'lucky_pick' && trip.yields === 0) amount *= 2;
-        room.teams[player.team].stash[trip.resource] += amount;
-        if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += amount;
-        trip.yields += amount;
+        if (trip.sabotagePending) {
+          trip.sabotagePending = false;
+        } else {
+          let amount = room.boostedResource === trip.resource ? 2 : 1;
+          if (trip.boostId === 'lucky_pick' && trip.yields === 0) amount *= 2;
+          room.teams[player.team].stash[trip.resource] += amount;
+          if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += amount;
+          trip.yields += amount;
+          const rules = DIFFICULTIES[room.difficulty] || DIFFICULTIES.standard;
+          if (player.boosts.length < 2 && Math.random() < rules.playerPowerupChance) player.boosts.push(randomBoost());
+        }
         trip.nextYieldAt += trip.yieldIntervalMs;
-        const rules = DIFFICULTIES[room.difficulty] || DIFFICULTIES.standard;
-        if (player.boosts.length < 2 && Math.random() < rules.playerPowerupChance) player.boosts.push(randomBoost());
       }
       if (Date.now() >= trip.endsAt || left <= 0) player.trip = null;
     }
@@ -357,7 +363,7 @@ function jsonRoute(req, res, pathname, data) {
     if (!RESOURCES.includes(resource)) return send(res, 400, { error: 'Choose a valid site resource.' });
     const team = room.teams[player.team];
     if (team.upgrades[resource]) return send(res, 409, { error: 'Your team has already upgraded that site this round.' });
-    const costs = { wood: 4, stone: 4, crystal: 4 }; costs[resource] = 8;
+    const costs = { wood: 4, stone: 4, crystal: 4, iron: 4 }; costs[resource] = 8;
     if (data.useToken) {
       if (team.upgradeTokens < 1) return send(res, 409, { error: 'Your team has no survey token to spend.' });
       team.upgradeTokens -= 1;
@@ -366,6 +372,25 @@ function jsonRoute(req, res, pathname, data) {
       for (const [key, quantity] of Object.entries(costs)) team.stash[key] -= quantity;
     }
     team.upgrades[resource] = true;
+    emit(room); return send(res, 200, { room: publicRoom(room) });
+  }
+  if (pathname === '/api/sabotage' && req.method === 'POST') {
+    if (room.phase !== 'playing') return send(res, 409, { error: 'Sabotage is only available during the main round.' });
+    const attackingTeam = room.teams[player.team];
+    if (Date.now() < attackingTeam.sabotageCooldownUntil) return send(res, 409, { error: 'Your crew’s sabotage rig is still recharging.' });
+    if (!enough(attackingTeam.stash, { iron: 2, crystal: 1 })) return send(res, 409, { error: 'Sabotage costs 2 iron and 1 crystal.' });
+    const targetTeamId = player.team === 0 ? 1 : 0;
+    const site = room.sites.find((entry) => entry.id === data.siteId);
+    if (!site) return send(res, 400, { error: 'Choose an opposing expedition site.' });
+    const target = [...room.players.values()]
+      .filter((member) => member.team === targetTeamId && member.trip?.siteId === site.id && !member.trip.sabotagePending && member.trip.nextYieldAt <= member.trip.endsAt)
+      .sort((a, b) => a.trip.nextYieldAt - b.trip.nextYieldAt)[0];
+    if (!target) return send(res, 409, { error: 'No opposing crew member at that site has a haul left to disrupt.' });
+    attackingTeam.stash.iron -= 2;
+    attackingTeam.stash.crystal -= 1;
+    attackingTeam.sabotageCooldownUntil = Date.now() + 90000;
+    target.trip.sabotagePending = true;
+    room.event = `${attackingTeam.name} sabotaged ${room.teams[targetTeamId].name} at ${site.name} · their next haul is disrupted`;
     emit(room); return send(res, 200, { room: publicRoom(room) });
   }
   if (pathname === '/api/trip' && req.method === 'POST') {
