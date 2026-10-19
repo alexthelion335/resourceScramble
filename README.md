@@ -20,6 +20,7 @@ When returning in the same browser, the home screen offers to continue the last 
 - Spectators can enter a room code and watch without taking a player slot. Players can open the separate TV scoreboard from the room; the scoreboard updates live and has a full-screen mode.
 - Players are assigned to the smaller crew as they join. Once three players have joined, players can choose a crew and customize their own crew’s name and emblem; even-sized lobbies may briefly be off balance while players arrange themselves.
 - Before launch, each player marks themselves ready. The lobby shows each player’s status, and the host can launch once everyone is ready; readiness resets for a rematch.
+- The host can choose a difficulty in the lobby. Relaxed has shorter, less frequent site rests and more powerups and surges; Standard keeps the usual pace; Stormy rotates sites faster, has fewer surges, and raises order costs by 15% (rounded up).
 - The host can start with at least two players when the crews are balanced: equal sizes for even lobbies, or a one-player difference for odd lobbies. The host also waits for every player to mark ready. Players can update their display name from the lobby before launch.
 - New players see a short four-step tutorial before the round. Their teammates wait in a crew briefing, and the round starts when everyone finishes or after one minute.
 - Choose an active island site to begin a 30-second trip. You are committed to gathering that site's resource for the trip, and one supply is added to the shared stash automatically every six seconds.

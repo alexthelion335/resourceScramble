@@ -4,6 +4,11 @@ const systemDarkMode = window.matchMedia?.('(prefers-color-scheme: dark)');
 if (storedTheme === 'light' || (!storedTheme && !systemDarkMode?.matches)) document.body.classList.add('light-mode');
 const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
+const difficultyDescriptions = {
+  relaxed: 'Sites rest less often and for less time; powerups and resource surges are more common.',
+  standard: 'The current rotation, event odds, and order costs.',
+  stormy: 'Sites rotate faster, surges are less common, and order costs rise by 15% (rounded up).'
+};
 const siteButtonOrder = ['grove', 'crystal', 'quarry'];
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
 let room = null, playerId = null, stream = null, spectatorMode = false, toastTimer = null, selectedBoostId = null, helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, puzzleSubmitting = false, pendingSession = null, tutorialStep = 0;
@@ -77,6 +82,9 @@ function render() {
   $('room-title').textContent = `Welcome, ${myPlayer.name}`;
   const lobby = room.phase === 'lobby';
   $('lobby-panel').classList.toggle('hidden', !lobby);
+  $('room-difficulty').value = room.difficulty || 'standard';
+  $('room-difficulty').disabled = !lobby || myPlayer.id !== room.createdBy;
+  $('difficulty-description').textContent = difficultyDescriptions[room.difficulty] || difficultyDescriptions.standard;
   const inTutorial = room.phase === 'tutorial';
   $('tutorial-panel').classList.toggle('hidden', !inTutorial);
   const inGame = ['playing', 'tiebreak'].includes(room.phase);
@@ -468,6 +476,12 @@ $('ready-up').addEventListener('click', async () => {
     const result = await api('ready', { code: room.code, playerId, ready: !room.players.find((player) => player.id === playerId)?.ready });
     room = result.room; render();
   } catch (error) { setError('room-error', error.message); }
+});
+$('room-difficulty').addEventListener('change', async (event) => {
+  try {
+    const result = await api('difficulty', { code: room.code, playerId, difficulty: event.target.value });
+    room = result.room; render();
+  } catch (error) { toast(error.message); render(); }
 });
 $('lobby-player-name').addEventListener('input', () => {
   const me = room?.players.find((player) => player.id === playerId);
