@@ -354,6 +354,7 @@ function revealPuzzleInput() {
     $('puzzle-instructions').textContent = `Tap the ${required} symbols in order, then check your answer. Use Backspace or Undo last to fix a tap.`;
     $('puzzle-input').innerHTML = `${puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('')}<div class="puzzle-answer-actions"><button id="undo-puzzle-answer" class="button board-link" type="button" disabled>⌫ Undo last</button><button id="check-puzzle-answer" class="button primary" type="button" disabled>Check answer</button></div>`;
     $('puzzle-input').classList.add('memory-input');
+    $('puzzle-input').classList.toggle('challenge-input', puzzleType === 'challenge');
   }
   puzzleSubmitting = false;
   $('puzzle-input').classList.remove('hidden');
