@@ -239,6 +239,13 @@ function jsonRoute(req, res, pathname, data) {
     player.ready = Boolean(data.ready);
     emit(room); return send(res, 200, { room: publicRoom(room) });
   }
+  if (pathname === '/api/player-name' && req.method === 'POST') {
+    if (room.phase !== 'lobby') return send(res, 409, { error: 'Names can only be changed in the lobby.' });
+    const name = String(data.name || '').trim();
+    if (!name) return send(res, 400, { error: 'Enter a name before saving.' });
+    player.name = cleanName(name);
+    emit(room); return send(res, 200, { room: publicRoom(room) });
+  }
   if (pathname === '/api/team-select' && req.method === 'POST') {
     if (room.phase !== 'lobby') return send(res, 409, { error: 'Teams can only be changed in the lobby.' });
     if (room.players.size < 3) return send(res, 409, { error: 'Team selection unlocks when three players have joined.' });

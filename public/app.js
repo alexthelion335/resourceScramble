@@ -6,7 +6,7 @@ const names = { wood: 'Wood', stone: 'Stone', crystal: 'Crystal' };
 const icons = { wood: '🪵', stone: '🪨', crystal: '💎' };
 const siteButtonOrder = ['grove', 'crystal', 'quarry'];
 const teamSymbols = [['🔥', 'Flame'], ['🌊', 'Wave'], ['🌿', 'Leaf'], ['⭐', 'Star'], ['⚡', 'Bolt'], ['🦊', 'Fox'], ['🐙', 'Octopus'], ['🌈', 'Rainbow'], ['🦈', 'Shark'], ['🐢', 'Turtle'], ['🍄', 'Mushroom'], ['☀️', 'Sun']];
-let room = null, playerId = null, stream = null, spectatorMode = false, toastTimer = null, selectedBoostId = null, helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, pendingSession = null, tutorialStep = 0;
+let room = null, playerId = null, stream = null, spectatorMode = false, toastTimer = null, selectedBoostId = null, helperOverrideResource = 'auto', puzzleSequence = [], puzzleAnswer = [], puzzleSymbols = [], puzzleType = 'memory', countSequence = [], countTarget = 0, puzzleCountdownTimer = null, puzzleSubmitting = false, pendingSession = null, tutorialStep = 0;
 const tutorialSteps = [
   ['Pick a region for each trip', 'Choose one active island site. Your 30-second trip gathers only that site’s resource, so coordinate with your crew to cover what your order needs.'],
   ['Your crew gathers together', 'Supplies arrive automatically every six seconds while you are away. Everyone on your team adds to the same stash, even when you are exploring different regions.'],
@@ -94,6 +94,10 @@ function render() {
   $('ready-up').classList.toggle('ready-confirmed', myPlayer.ready);
   $('ready-up').textContent = myPlayer.ready ? 'Ready ✓ · undo' : 'I’m ready';
   $('ready-status').textContent = `${readyCount} of ${room.players.length} ready${allReady ? ' · everyone is set' : ''}`;
+  const nameInput = $('lobby-player-name');
+  if (document.activeElement !== nameInput) nameInput.value = myPlayer.name;
+  nameInput.disabled = !lobby;
+  $('save-player-name').disabled = !lobby || !nameInput.value.trim() || nameInput.value.trim() === myPlayer.name;
   $('start-game').disabled = room.players.length < 2 || myPlayer.id !== room.createdBy || !allReady || !teamsBalanced;
   $('start-game').textContent = myPlayer.id !== room.createdBy ? 'Waiting for host…' : room.players.length < 2 ? 'Waiting for players…' : !teamsBalanced ? 'Balance teams before launch' : allReady ? 'Launch the round   ↗' : `Waiting for everyone (${readyCount}/${room.players.length})`;
   renderTeams();
@@ -303,13 +307,14 @@ function closePuzzle() {
   clearInterval(puzzleCountdownTimer); puzzleCountdownTimer = null;
   $('puzzle-modal').classList.add('hidden');
   $('puzzle-countdown').classList.add('hidden');
+  puzzleSubmitting = false;
 }
 async function openPuzzle(mode = '') {
   try {
     const query = `puzzle?code=${room.code}&playerId=${playerId}${mode ? `&type=${mode}` : ''}`;
     const result = await api(query, {}, 'GET');
-    puzzleSequence = result.sequence || []; puzzleSymbols = result.symbols; puzzleAnswer = []; puzzleType = result.type; countSequence = result.countSequence || []; countTarget = result.countTarget;
-    $('puzzle-modal').classList.remove('hidden'); $('puzzle-input').classList.add('hidden'); $('puzzle-message').textContent = ''; $('puzzle-message').classList.remove('wrong');
+    puzzleSequence = result.sequence || []; puzzleSymbols = result.symbols; puzzleAnswer = []; puzzleType = result.type; countSequence = result.countSequence || []; countTarget = result.countTarget; puzzleSubmitting = false;
+    $('puzzle-modal').classList.remove('hidden'); $('puzzle-input').classList.add('hidden'); $('puzzle-input').classList.remove('memory-input'); $('puzzle-message').textContent = ''; $('puzzle-message').classList.remove('wrong');
     const sequence = puzzleType === 'count' ? countSequence : puzzleSequence;
     const display = $('puzzle-sequence');
     display.classList.remove('count-grid', 'count-answer', 'multi-grid', 'multi-answer');
@@ -346,12 +351,26 @@ function revealPuzzleInput() {
   } else {
     display.innerHTML = '<span>?</span>'.repeat(puzzleSequence.length);
     const required = puzzleType === 'challenge' ? 6 : 4;
-    $('puzzle-instructions').textContent = `Tap the ${required} symbols in the same order.`;
-    $('puzzle-input').innerHTML = puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('');
+    $('puzzle-instructions').textContent = `Tap the ${required} symbols in order, then check your answer. Use Backspace or Undo last to fix a tap.`;
+    $('puzzle-input').innerHTML = `${puzzleSymbols.map((symbol, index) => `<button class="puzzle-symbol" data-symbol="${index}">${symbol}</button>`).join('')}<div class="puzzle-answer-actions"><button id="undo-puzzle-answer" class="button board-link" type="button" disabled>⌫ Undo last</button><button id="check-puzzle-answer" class="button primary" type="button" disabled>Check answer</button></div>`;
+    $('puzzle-input').classList.add('memory-input');
   }
+  puzzleSubmitting = false;
   $('puzzle-input').classList.remove('hidden');
+  if (puzzleType !== 'count') renderPuzzleAnswer();
+}
+function renderPuzzleAnswer() {
+  const required = puzzleType === 'challenge' ? 6 : 4;
+  $('puzzle-sequence').innerHTML = puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(required - puzzleAnswer.length);
+  $('puzzle-sequence').classList.toggle('multi-answer', puzzleType === 'challenge');
+  $('undo-puzzle-answer').disabled = puzzleAnswer.length === 0 || puzzleSubmitting;
+  $('check-puzzle-answer').disabled = puzzleAnswer.length !== required || puzzleSubmitting;
+  $('puzzle-input').querySelectorAll('[data-symbol]').forEach((button) => { button.disabled = puzzleSubmitting || puzzleAnswer.length >= required; });
 }
 async function submitPuzzleAnswer(answer) {
+  if (puzzleSubmitting) return;
+  puzzleSubmitting = true;
+  if (puzzleType !== 'count') renderPuzzleAnswer();
   try {
     const result = await api('puzzle', { code: room.code, playerId, sequence: answer, type: puzzleType });
     const message = $('puzzle-message');
@@ -363,7 +382,11 @@ async function submitPuzzleAnswer(answer) {
       message.textContent = puzzleType === 'challenge' ? 'Survey missed. Try the challenge again on your next trip.' : 'Not quite. This trip’s puzzle is spent.';
       message.classList.add('wrong'); setTimeout(closePuzzle, 1100);
     }
-  } catch (error) { $('puzzle-message').textContent = error.message; }
+  } catch (error) {
+    puzzleSubmitting = false;
+    $('puzzle-message').textContent = error.message;
+    if (puzzleType !== 'count') renderPuzzleAnswer();
+  }
 }
 
 $('create-room').addEventListener('click', async () => {
@@ -445,6 +468,29 @@ $('ready-up').addEventListener('click', async () => {
     room = result.room; render();
   } catch (error) { setError('room-error', error.message); }
 });
+$('lobby-player-name').addEventListener('input', () => {
+  const me = room?.players.find((player) => player.id === playerId);
+  $('save-player-name').disabled = !me || $('lobby-player-name').value.trim() === me.name || !$('lobby-player-name').value.trim();
+  $('player-name-status').textContent = '';
+});
+$('player-name-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = $('lobby-player-name').value.trim();
+  if (!name) { $('player-name-status').textContent = 'Enter a name first.'; return; }
+  $('save-player-name').disabled = true;
+  $('player-name-status').textContent = 'Saving name…';
+  try {
+    const result = await api('player-name', { code: room.code, playerId, name });
+    room = result.room;
+    const savedName = room.players.find((player) => player.id === playerId).name;
+    $('lobby-player-name').value = savedName;
+    render();
+    $('player-name-status').textContent = `You’ll appear as ${savedName}.`;
+  } catch (error) {
+    $('save-player-name').disabled = false;
+    $('player-name-status').textContent = error.message;
+  }
+});
 $('tutorial-back').addEventListener('click', () => { tutorialStep = Math.max(0, tutorialStep - 1); renderTutorial(room.players.find((player) => player.id === playerId)); });
 $('tutorial-next').addEventListener('click', () => {
   if (tutorialStep < tutorialSteps.length - 1) { tutorialStep += 1; renderTutorial(room.players.find((player) => player.id === playerId)); }
@@ -488,16 +534,20 @@ $('yield-upgrades').addEventListener('click', async (event) => {
   catch (error) { toast(error.message); }
 });
 $('puzzle-input').addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-symbol]'); const requiredAnswers = puzzleType === 'count' ? 1 : puzzleType === 'challenge' ? 6 : 4;
+  if (puzzleSubmitting) return;
+  if (event.target.closest('#undo-puzzle-answer')) {
+    if (puzzleAnswer.length) puzzleAnswer.pop();
+    renderPuzzleAnswer();
+    return;
+  }
+  if (event.target.closest('#check-puzzle-answer')) {
+    if (puzzleAnswer.length === (puzzleType === 'challenge' ? 6 : 4)) submitPuzzleAnswer([...puzzleAnswer]);
+    return;
+  }
+  const button = event.target.closest('[data-symbol]'); const requiredAnswers = puzzleType === 'challenge' ? 6 : 4;
   if (!button || puzzleAnswer.length >= requiredAnswers) return;
   puzzleAnswer.push(Number(button.dataset.symbol));
-  $('puzzle-sequence').innerHTML = puzzleType === 'count'
-    ? `<span>${puzzleAnswer[0]}</span>`
-    : puzzleAnswer.map((index) => `<span>${puzzleSymbols[index]}</span>`).join('') + '<span>·</span>'.repeat(requiredAnswers - puzzleAnswer.length);
-  if (puzzleType === 'count') $('puzzle-sequence').classList.add('count-answer');
-  if (puzzleType === 'challenge') $('puzzle-sequence').classList.add('multi-answer');
-  if (puzzleAnswer.length !== requiredAnswers) return;
-  submitPuzzleAnswer(puzzleAnswer);
+  renderPuzzleAnswer();
 });
 $('puzzle-input').addEventListener('submit', (event) => {
   if (!event.target.matches('#count-puzzle-form')) return;
@@ -512,6 +562,12 @@ $('puzzle-input').addEventListener('submit', (event) => {
   submitPuzzleAnswer(puzzleAnswer);
 });
 $('puzzle-close').addEventListener('click', closePuzzle);
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Backspace' || $('puzzle-modal').classList.contains('hidden') || puzzleType === 'count') return;
+  if (event.target.matches('input, textarea, [contenteditable="true"]')) return;
+  event.preventDefault();
+  if (!puzzleSubmitting && puzzleAnswer.length) { puzzleAnswer.pop(); renderPuzzleAnswer(); }
+});
 $('deliver-order').addEventListener('click', async () => {
   const wasTiebreak = room.phase === 'tiebreak';
   try { await api('order', { code: room.code, playerId }); toast(wasTiebreak ? 'Golden Beacon delivered!' : 'Order delivered! Points for your crew.'); }
