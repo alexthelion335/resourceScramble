@@ -193,6 +193,9 @@ body:not(.light-mode) .helper-panel { background: #303426; border-color: #4e5739
 @media (max-width: 700px) {
   .site-card { min-height: 145px; }
   .room-head h1 { font-size: 34px; }
+  .room-head { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .room-head-actions { width: 100%; align-items: center; justify-content: space-between; }
+  .room-code-box { align-items: flex-start; }
 }
 
 .watch-scoreboard-button {
