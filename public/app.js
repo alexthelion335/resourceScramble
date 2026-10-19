@@ -23,6 +23,15 @@ async function api(path, data = {}, method = 'POST') {
   return result;
 }
 function currentName() { return $('player-name').value.trim() || 'Rover'; }
+function drawRoomInvite() {
+  if (!room) return;
+  const invite = new URL(location.pathname || '/', location.origin);
+  invite.searchParams.set('join', room.code);
+  $('qr-room-code').textContent = room.code;
+  $('join-link').href = invite.href;
+  $('join-link').textContent = invite.href;
+  window.drawJoinQRCode($('join-qr'), invite.href);
+}
 function saveSession() {
   if (room && playerId) localStorage.setItem('resource-scramble-session', JSON.stringify({ code: room.code, playerId }));
 }
@@ -209,11 +218,11 @@ function renderHelper(team) {
   if (room.helperTeamId !== team.id) { panel.innerHTML = ''; panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   const helperTrip = team.helperTrip;
-  const status = helperTrip ? `Helper gathering ${names[helperTrip.lastResource || helperTrip.resource]} · ${helperTrip.yields}/3` : 'Helper gathers up to 3 supplies over 30s after a teammate departs.';
+  const status = helperTrip ? `Helper gathering ${names[helperTrip.lastResource || helperTrip.resource]} · ${helperTrip.yields}/3 hauls` : 'Helper gathers up to 3 hauls over 30s after a teammate departs.';
   const members = room.players.filter((player) => player.team === team.id);
   if (members.length === 1) {
     const options = ['auto', ...Object.keys(names)].map((resource) => `<option value="${resource}" ${helperOverrideResource === resource ? 'selected' : ''}>${resource === 'auto' ? 'Automatic · best other order resource' : `Override · ${names[resource]}`}</option>`).join('');
-    panel.innerHTML = `<div class="helper-panel-head"><b>🧭 Crew helper</b><span>${escapeHtml(status)}</span></div><label class="helper-control">Helper resource<select id="helper-resource-override">${options}</select></label>`;
+    panel.innerHTML = `<div class="helper-panel-head"><b>🧭 Crew helper</b><span>${escapeHtml(status)}</span></div><p>Helper hauls can also uncover a powerup for a teammate.</p><label class="helper-control">Helper resource<select id="helper-resource-override">${options}</select></label>`;
     return;
   }
   const modeVotes = team.helperModeVotes || {};
@@ -224,7 +233,7 @@ function renderHelper(team) {
     const votes = members.filter((member) => resourceVotes[member.id] === resource).length;
     return `<button class="helper-vote-button ${resourceVotes[playerId] === resource ? 'selected' : ''}" data-helper-resource="${resource}">${icons[resource]} ${names[resource]} <small>${votes} vote${votes === 1 ? '' : 's'}</small></button>`;
   }).join('')}</div>` : '';
-  panel.innerHTML = `<div class="helper-panel-head"><b>🧭 Crew helper</b><span>${escapeHtml(status)}</span></div><p>Vote for automatic order-based gathering or manual resource choice. Majority decides; ties stay automatic. Manual resource ties also use the order-based choice.</p><div class="helper-mode-votes"><button class="helper-vote-button ${modeVotes[playerId] === 'auto' ? 'selected' : ''}" data-helper-mode="auto">Auto <small>${autoVotes} vote${autoVotes === 1 ? '' : 's'}</small></button><button class="helper-vote-button ${modeVotes[playerId] === 'manual' ? 'selected' : ''}" data-helper-mode="manual">Choose resource <small>${manualVotes} vote${manualVotes === 1 ? '' : 's'}</small></button></div>${resourceButtons}`;
+  panel.innerHTML = `<div class="helper-panel-head"><b>🧭 Crew helper</b><span>${escapeHtml(status)}</span></div><p>Vote for automatic order-based gathering or manual resource choice. Majority decides; ties stay automatic. Helper hauls can also uncover powerups for your crew.</p><div class="helper-mode-votes"><button class="helper-vote-button ${modeVotes[playerId] === 'auto' ? 'selected' : ''}" data-helper-mode="auto">Auto <small>${autoVotes} vote${autoVotes === 1 ? '' : 's'}</small></button><button class="helper-vote-button ${modeVotes[playerId] === 'manual' ? 'selected' : ''}" data-helper-mode="manual">Choose resource <small>${manualVotes} vote${manualVotes === 1 ? '' : 's'}</small></button></div>${resourceButtons}`;
 }
 function renderResult() {
   const winner = room.winner;
@@ -396,6 +405,18 @@ $('scoreboard-fullscreen').addEventListener('click', async () => {
 $('scoreboard-exit').addEventListener('click', exitSpectator);
 $('room-code').addEventListener('input', (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
 $('room-code').addEventListener('keydown', (event) => { if (event.key === 'Enter') $('join-room').click(); });
+$('show-qr').addEventListener('click', () => {
+  const panel = $('qr-invite-panel');
+  const open = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  $('show-qr').setAttribute('aria-expanded', String(open));
+  if (open) drawRoomInvite();
+});
+$('close-qr').addEventListener('click', () => {
+  $('qr-invite-panel').classList.add('hidden');
+  $('show-qr').setAttribute('aria-expanded', 'false');
+  $('show-qr').focus();
+});
 $('lobby-teams').addEventListener('change', async (event) => {
   const nameField = event.target.closest('[data-team-name]');
   const symbolField = event.target.closest('[data-team-symbol]');
@@ -520,6 +541,8 @@ window.addEventListener('pagehide', () => { if (stream) stream.close(); });
 // Rejoin a room after a refresh on this device; the session token is local to this browser.
 (async function restoreSession() {
   const requested = new URLSearchParams(location.search);
+  const invitedCode = requested.get('join');
+  if (invitedCode && /^[A-Z0-9]{6}$/i.test(invitedCode)) $('room-code').value = invitedCode.toUpperCase();
   if (requested.get('view') === 'scoreboard' && requested.get('room')) {
     try {
       const result = await api(`state?code=${encodeURIComponent(requested.get('room'))}`, {}, 'GET');

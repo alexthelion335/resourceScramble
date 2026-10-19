@@ -80,7 +80,7 @@ function createRoom(name, isNewPlayer) {
       { id: 'grove', name: 'Driftwood Grove', resource: 'wood', icon: '🌲', active: true },
       { id: 'quarry', name: 'Cloudstone Ridge', resource: 'stone', icon: '🪨', active: true },
       { id: 'crystal', name: 'Prism Grotto', resource: 'crystal', icon: '💎', active: true },
-    ], event: 'All sites are open', listeners: new Set(), timer: null, endsAt: 0,
+    ], event: 'All sites are open', boostedResource: null, listeners: new Set(), timer: null, endsAt: 0,
   };
   rooms.set(code, room);
   return { room, playerId: id };
@@ -98,7 +98,7 @@ function auth(room, id) { return room.players.get(id); }
 function teamCounts(room) { return [0, 1].map((teamId) => [...room.players.values()].filter((player) => player.team === teamId).length); }
 function launchRound(room) {
   room.phase = 'playing'; room.endsAt = Date.now() + room.duration * 1000; room.winner = null; room.tiebreakMethod = null; room.tiebreakHauls = [0, 0]; room.nextRotation = Date.now() + 25000;
-  room.sites.forEach((site) => { site.active = true; }); room.event = 'All sites are open';
+  room.sites.forEach((site) => { site.active = true; }); room.event = 'All sites are open'; room.boostedResource = null;
 }
 function start(room) {
   const counts = teamCounts(room);
@@ -121,7 +121,7 @@ function start(room) {
       const trip = player.trip;
       const finalGatherAt = Math.min(trip.endsAt, room.endsAt);
       while (trip.nextYieldAt <= Date.now() && trip.nextYieldAt <= finalGatherAt) {
-        let amount = room.event === 'Crystal showers' && trip.resource === 'crystal' ? 2 : 1;
+        let amount = room.boostedResource === trip.resource ? 2 : 1;
         if (trip.boostId === 'lucky_pick' && trip.yields === 0) amount *= 2;
         room.teams[player.team].stash[trip.resource] += amount;
         if (room.phase === 'tiebreak') room.tiebreakHauls[player.team] += amount;
@@ -141,8 +141,11 @@ function start(room) {
         const fallbackSite = available.sort((a, b) => resourceNeed(team, b.resource) - resourceNeed(team, a.resource) || (team.order.costs[b.resource] || 0) - (team.order.costs[a.resource] || 0) || team.stash[a.resource] - team.stash[b.resource])[0];
         const gatherSite = preferredSite?.active ? preferredSite : fallbackSite;
         if (gatherSite) {
-          team.stash[gatherSite.resource] += 1; helperTrip.yields += 1; helperTrip.lastResource = gatherSite.resource;
-          if (room.phase === 'tiebreak') room.tiebreakHauls[team.id] += 1;
+          const amount = room.boostedResource === gatherSite.resource ? 2 : 1;
+          team.stash[gatherSite.resource] += amount; helperTrip.yields += 1; helperTrip.lastResource = gatherSite.resource;
+          if (room.phase === 'tiebreak') room.tiebreakHauls[team.id] += amount;
+          const recipients = [...room.players.values()].filter((member) => member.team === team.id && member.boosts.length < 2);
+          if (recipients.length && Math.random() < 0.06) recipients[Math.floor(Math.random() * recipients.length)].boosts.push(randomBoost());
         }
         helperTrip.nextYieldAt += 10000;
       }
@@ -150,19 +153,23 @@ function start(room) {
     }
     if (room.phase === 'playing' && left > 0 && Date.now() >= room.nextRotation) {
       room.sites.forEach((site) => { site.active = true; });
+      room.boostedResource = null;
       const resting = room.sites[Math.floor(Math.random() * room.sites.length)];
       resting.active = false;
       room.event = `${resting.name} is resting · other sites yield normally`;
       room.nextRotation = Date.now() + 18000;
       if (Math.random() < 0.35) {
-        const crystal = room.sites.find((site) => site.resource === 'crystal');
-        crystal.active = true; room.event = 'Crystal showers · crystal yields double';
+        const resource = RESOURCES[Math.floor(Math.random() * RESOURCES.length)];
+        const boostedSite = room.sites.find((site) => site.resource === resource);
+        boostedSite.active = true; room.boostedResource = resource;
+        room.event = `${boostedSite.name} surge · ${resource} yields double`;
       }
     }
     if (left <= 0 && room.phase === 'playing') {
       const [a, b] = room.teams;
       if (a.score === b.score) {
         room.phase = 'tiebreak'; room.endsAt = Date.now() + room.tiebreakDuration * 1000; room.tiebreakHauls = [0, 0]; room.nextRotation = Date.now() + 10000;
+        room.boostedResource = null;
         room.sites.forEach((site) => { site.active = true; });
         room.event = 'SUDDEN DEATH · Deliver the Golden Beacon first to win';
         for (const team of room.teams) {
